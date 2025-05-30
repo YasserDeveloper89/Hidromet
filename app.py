@@ -28,7 +28,6 @@ def cargar_datos():
         except Exception as e:
             st.error(f"❌ Error al cargar el archivo: {e}")
 
-
 def exportar_pdf(df):
     try:
         pdf = FPDF()
@@ -53,7 +52,6 @@ def exportar_pdf(df):
     except Exception as e:
         st.error(f"Error al generar PDF: {e}")
 
-
 def exportar_word(df):
     try:
         doc = Document()
@@ -76,7 +74,6 @@ def exportar_word(df):
     except Exception as e:
         st.error(f"Error al generar Word: {e}")
 
-
 def graficos_avanzados(df):
     st.subheader("📊 Análisis de Datos")
     if df.empty:
@@ -91,7 +88,6 @@ def graficos_avanzados(df):
     st.plotly_chart(px.line(df, x=df.index, y=columnas_numericas, title="Tendencia Temporal"))
     st.plotly_chart(px.histogram(df, x=columnas_numericas[0], title="Distribución de " + columnas_numericas[0]))
     st.plotly_chart(px.imshow(df[columnas_numericas].corr(), text_auto=True, aspect="auto", title="Mapa de Correlación"))
-
 
 def admin_panel():
     st.title("📡 Panel de Administrador - Control Total")
@@ -119,6 +115,7 @@ def admin_panel():
             st.warning("[Simulado] Modelo predice aumento de caudal en 48h")
 
         with st.expander("4. Comparativa Histórica"):
+            columnas_numericas = df.select_dtypes(include=np.number).columns.tolist()
             st.plotly_chart(px.box(df, y=columnas_numericas, title="Comparativa Histórica"))
 
         with st.expander("5. Exportación Avanzada"):
@@ -140,7 +137,10 @@ def admin_panel():
             st.write(df.describe())
 
         with st.expander("11. Mapa Geográfico de Sensores"):
-            st.map(df.rename(columns={"lat": "latitude", "lon": "longitude"}), zoom=4)
+            if "lat" in df.columns and "lon" in df.columns:
+                st.map(df.rename(columns={"lat": "latitude", "lon": "longitude"}), zoom=4)
+            else:
+                st.warning("Las columnas 'lat' y 'lon' no están presentes en los datos.")
 
         with st.expander("12. Configuración de Umbrales"):
             st.slider("Umbral de alerta de caudal", 0, 1000, 300)
@@ -155,7 +155,6 @@ def admin_panel():
             st.success("[Simulado] Dashboard generado y archivado")
     else:
         st.info("Por favor cargue un archivo para acceder a las herramientas.")
-
 
 def login():
     if "authenticated" not in st.session_state:
@@ -175,8 +174,7 @@ def login():
                     st.session_state.user = username
                     st.session_state.role = user["role"]
                     st.success(f"Login exitoso. Bienvenido, {username}")
-                    st.experimental_set_query_params(refresh=str(datetime.now()))
-                    st.stop()
+                    st.rerun()
                 else:
                     st.error("Credenciales inválidas")
     else:
@@ -184,9 +182,7 @@ def login():
             for key in ["authenticated", "user", "role", "df"]:
                 st.session_state.pop(key, None)
             st.success("Sesión cerrada")
-            st.experimental_set_query_params(refresh=str(datetime.now()))
-            st.stop()
-
+            st.rerun()
 
 # --- Main ---
 if __name__ == "__main__":
@@ -196,4 +192,3 @@ if __name__ == "__main__":
             admin_panel()
         else:
             st.error("Acceso restringido. Este panel es solo para administradores.")
-        
