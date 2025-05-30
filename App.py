@@ -34,7 +34,7 @@ def logout():
     st.rerun()
 
 # ----------------- Generar PDF -----------------
-def generar_pdf(df_to_export):
+def generar_pdf(df_actual):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -204,4 +204,4 @@ def main():
 
 main()
 
-            
+                
