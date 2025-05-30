@@ -83,11 +83,15 @@ def admin_panel():
     st.write(f"Bienvenido, {st.session_state.usuario}")
 
     # --- CSV Upload Section ---
-    st.subheader("📁 Cargar Datos (CSV)")
-    uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"]) # Removed redundant text here
+    st.subheader("📁 Cargar y Analizar Datos (CSV)")
+    # Removed the redundant text here, as the title already explains it.
+    uploaded_file = st.file_uploader("Sube tu archivo CSV aquí para visualizar y analizar.", type=["csv"]) 
 
     if uploaded_file is None:
         st.session_state.df_cargado = None
+        # Only show this info when no file is uploaded yet
+        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación.")
+
 
     if uploaded_file is not None:
         try:
@@ -121,8 +125,8 @@ def admin_panel():
             st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
             st.session_state.df_cargado = None
     
+    # Conditional display of CSV-related tools
     df_actual = st.session_state.df_cargado
-
     if df_actual is not None and not df_actual.empty:
         numeric_df = df_actual.select_dtypes(include=['number'])
 
@@ -186,13 +190,11 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-    else:
-        # Removed the duplicate text here, now it's only shown if no file is uploaded.
-        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación.")
     
+    # --- Separador ---
     st.write("---")
 
-    # --- Nueva Herramienta: Visualización de Temperatura y Fecha ---
+    # --- Nueva Herramienta: Visualización de Temperatura y Fecha (Siempre visible) ---
     st.subheader("🌡️ Visualización de Datos de Temperatura y Ambiente")
     st.write("Aquí puedes monitorear de manera clara e intuitiva datos ambientales clave como la temperatura y la fecha.")
 
@@ -258,4 +260,4 @@ def main():
         login()
 
 main()
-            
+    
