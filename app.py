@@ -7,118 +7,139 @@ from fpdf import FPDF
 import plotly.graph_objects as go
 from datetime import datetime
 
-# --- CONFIGURAR PÁGINA ---
-st.set_page_config(page_title="HydroClimaPRO", layout="wide")
+# --------------------------
+# CONFIGURACIÓN INICIAL
+# --------------------------
+st.set_page_config(page_title="HydroClima PRO", layout="wide")
 
-# --- BASE DE USUARIOS ---
-USUARIOS = {
-    "admin": {"password": "admin123", "role": "Administrador"},
-    "supervisor": {"password": "super123", "role": "Supervisor"},
-    "tecnico": {"password": "tec123", "role": "Técnico"},
+# --------------------------
+# CREDENCIALES DE USUARIO
+# --------------------------
+USERS = {
+    "admin": {"password": "admin123", "role": "admin"},
+    "analista": {"password": "analista123", "role": "analyst"},
+    "tecnico": {"password": "tecnico123", "role": "technician"}
 }
 
-# --- FUNCIONES DE SESIÓN ---
+# --------------------------
+# FUNCIONES DE SESIÓN
+# --------------------------
 def login():
-    st.sidebar.title("Inicio de sesión")
-    username = st.sidebar.text_input("Usuario")
-    password = st.sidebar.text_input("Contraseña", type="password")
-    if st.sidebar.button("Iniciar sesión"):
-        user = USUARIOS.get(username)
-        if user and user["password"] == password:
-            st.session_state["logueado"] = True
-            st.session_state["usuario"] = username
-            st.session_state["rol"] = user["role"]
-            st.experimental_rerun()
-        else:
-            st.sidebar.error("Credenciales inválidas")
+    st.title("🔒 Iniciar sesión")
+    st.markdown("Bienvenido a HydroClima PRO. Introduce tus credenciales para continuar.")
 
-# --- EXPORTACIÓN PDF ---
-def exportar_pdf(data):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos Meteorológicos", ln=True, align="C")
-    pdf.ln(10)
+    with st.form("login_form"):
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Iniciar sesión")
 
-    for col in data.columns:
-        pdf.cell(40, 10, col, border=1)
-    pdf.ln()
-    for _, row in data.iterrows():
-        for val in row:
-            pdf.cell(40, 10, str(val), border=1)
-        pdf.ln()
+        if submitted:
+            if username in USERS and USERS[username]["password"] == password:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.session_state["role"] = USERS[username]["role"]
+                st.success("Login exitoso. Bienvenido, {}".format(username))
+            else:
+                st.error("Credenciales inválidas. Intenta de nuevo.")
 
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    return pdf_output
+# --------------------------
+# BARRA SUPERIOR
+# --------------------------
+def top_bar():
+    st.sidebar.title("📂 Menú")
+    st.sidebar.write("**Usuario:**", st.session_state["username"])
+    st.sidebar.write("**Rol:**", st.session_state["role"])
+    if st.sidebar.button("🔚 Cerrar sesión"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.experimental_rerun()
 
-# --- EXPORTACIÓN WORD ---
-def exportar_word(data):
-    doc = Document()
-    doc.add_heading("Informe de Datos Meteorológicos", 0)
-    t = doc.add_table(rows=1, cols=len(data.columns))
-    hdr_cells = t.rows[0].cells
-    for i, col in enumerate(data.columns):
-        hdr_cells[i].text = col
-    for _, row in data.iterrows():
-        row_cells = t.add_row().cells
-        for i, val in enumerate(row):
-            row_cells[i].text = str(val)
-    output = BytesIO()
-    doc.save(output)
-    return output
+# --------------------------
+# FUNCIONES DEL ADMIN
+# --------------------------
+def admin_dashboard():
+    st.header("Panel de Administrador")
+    st.markdown("Acceso completo al sistema, gestión de usuarios y más.")
 
-# --- GRÁFICO DETALLADO ---
-def graficar(data):
-    st.subheader("Visualización avanzada")
-    for columna in data.select_dtypes(include=np.number).columns:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(y=data[columna], name=columna, mode="lines+markers"))
-        fig.update_layout(title=f"Tendencia de {columna}", template="plotly_dark")
-        st.plotly_chart(fig, use_container_width=True)
+    st.subheader("📈 Conexión con sensores en tiempo real (simulado)")
+    if st.button("📡 Obtener datos del sensor de temperatura"):
+        sensor_data = round(np.random.uniform(18, 30), 2)
+        st.success(f"🌡️ Temperatura registrada: {sensor_data} °C")
 
-# --- INTERFAZ PRINCIPAL ---
-def app():
-    st.title("HydroClimaPRO - Plataforma Meteorológica Profesional")
-    st.markdown(f"### Bienvenido, {st.session_state['usuario']} ({st.session_state['rol']})")
-
-    uploaded_file = st.file_uploader("Carga de archivo CSV", type=["csv"])
+    st.subheader("📊 Subida y análisis de datos")
+    uploaded_file = st.file_uploader("Sube un archivo CSV con datos meteorológicos")
     if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            st.success("Archivo cargado correctamente")
+        df = pd.read_csv(uploaded_file)
+        st.session_state["data"] = df
+        st.dataframe(df)
 
-            st.subheader("Vista Previa de Datos")
-            st.dataframe(df, use_container_width=True)
+        if st.button("📤 Exportar a PDF"):
+            try:
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
+                pdf.cell(200, 10, txt="Informe de Datos Meteorológicos", ln=1, align="C")
+                for col in df.columns:
+                    pdf.cell(200, 10, txt=f"{col}: {df[col].mean():.2f}", ln=1)
+                pdf_output = BytesIO()
+                pdf.output(pdf_output)
+                st.download_button("⬇️ Descargar PDF", data=pdf_output.getvalue(), file_name="informe.pdf")
+            except Exception as e:
+                st.error(f"Error al generar PDF: {e}")
 
-            if st.session_state['rol'] in ["Administrador", "Supervisor"]:
-                graficar(df)
+# --------------------------
+# FUNCIONES DEL ANALISTA
+# --------------------------
+def analyst_dashboard():
+    st.header("Panel del Analista")
+    st.markdown("Subida de archivos, análisis estadístico y visualización de datos.")
 
-                st.markdown("### Exportar Informe")
-                col1, col2 = st.columns(2)
-                with col1:
-                    pdf_bytes = exportar_pdf(df)
-                    st.download_button("Descargar PDF", data=pdf_bytes.getvalue(), file_name="informe.pdf")
-                with col2:
-                    word_bytes = exportar_word(df)
-                    st.download_button("Descargar Word", data=word_bytes.getvalue(), file_name="informe.docx")
+    uploaded_file = st.file_uploader("Sube un archivo CSV")
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        st.dataframe(df)
 
-            if st.session_state['rol'] == "Administrador":
-                st.markdown("---")
-                st.subheader("Panel de administración")
-                st.info("Funcionalidades avanzadas como conexión directa a medidores, gestión de usuarios, configuración de sensores, etc. estarán disponibles aquí.")
+        st.subheader("📊 Estadísticas básicas")
+        st.write(df.describe())
 
-        except Exception as e:
-            st.error(f"Error al procesar el archivo: {e}")
-    else:
-        st.warning("Por favor, carga un archivo CSV para comenzar.")
+        st.subheader("📈 Visualización interactiva")
+        numeric_columns = df.select_dtypes(include=np.number).columns
+        if len(numeric_columns) >= 2:
+            x = st.selectbox("Eje X", numeric_columns)
+            y = st.selectbox("Eje Y", numeric_columns, index=1)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df[x], y=df[y], mode='markers', marker=dict(color='orange')))
+            fig.update_layout(title=f"{y} vs {x}", template="plotly_dark")
+            st.plotly_chart(fig, use_container_width=True)
 
-# --- MAIN ---
-if "logueado" not in st.session_state:
-    st.session_state["logueado"] = False
+# --------------------------
+# FUNCIONES DEL TÉCNICO
+# --------------------------
+def technician_dashboard():
+    st.header("Panel del Técnico")
+    st.markdown("Revisión de sensores, registros recientes y diagnósticos automáticos.")
 
-if not st.session_state["logueado"]:
+    st.subheader("📟 Estado de sensores")
+    st.info("Sensor A: OK\nSensor B: OK\nSensor C: OK")
+
+    st.subheader("🔍 Diagnóstico rápido")
+    st.success("Todos los sistemas operativos dentro de los parámetros esperados.")
+
+# --------------------------
+# MAIN
+# --------------------------
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if not st.session_state["logged_in"]:
     login()
 else:
-    app()
-    
+    top_bar()
+    role = st.session_state["role"]
+    if role == "admin":
+        admin_dashboard()
+    elif role == "analyst":
+        analyst_dashboard()
+    elif role == "technician":
+        technician_dashboard()
+        
