@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt # Aunque no se usa directamente en este código, lo mantengo por si lo necesitas
 import base64
 from io import BytesIO
 from fpdf import FPDF
@@ -23,8 +23,7 @@ def login():
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
             st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
-            # Forzar una re-ejecución para que main() cargue admin_panel()
-            st.rerun() # O st.experimental_rerun() si st.rerun() no funciona en tu versión
+            st.rerun() # Forzar re-ejecución para cargar el panel de admin
         else:
             st.error("❌ Usuario o contraseña incorrectos")
 
@@ -32,11 +31,10 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-    # Forzar una re-ejecución para que main() cargue el login nuevamente
-    st.rerun() # O st.experimental_rerun() si st.rerun() no funciona en tu versión
+    st.rerun() # Forzar re-ejecución para volver al login
 
 # ----------------- Generar PDF -----------------
-def generar_pdf(df):
+def generar_pdf(df_to_export): # Cambiado el nombre de la variable para mayor claridad
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -44,14 +42,13 @@ def generar_pdf(df):
     pdf.ln()
 
     # Añadir encabezados de la tabla al PDF
-    # Asegúrate de que el ancho de la columna sea suficiente para los encabezados y datos
-    col_width = pdf.w / (len(df.columns) + 1) # +1 para el índice
-    for col in df.columns:
+    col_width = pdf.w / (len(df_to_export.columns) + 1) # +1 para el índice
+    for col in df_to_export.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
     # Añadir filas de datos al PDF
-    for index, row in df.iterrows():
+    for index, row in df_to_export.iterrows():
         # Formatear la fecha para el índice si es un Timestamp
         if isinstance(index, pd.Timestamp):
             pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
@@ -62,22 +59,21 @@ def generar_pdf(df):
         pdf.ln()
 
     buffer = BytesIO()
-    # CAMBIO CRÍTICO: 'output' para escribir al buffer directamente
     pdf.output(buffer, 'S') # 'S' para cadena/bytes en memoria
     pdf_data = buffer.getvalue()
     return pdf_data
 
 # ----------------- Generar Word -----------------
-def generar_word(df):
+def generar_word(df_to_export): # Cambiado el nombre de la variable para mayor claridad
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
-    table = doc.add_table(rows=1, cols=len(df.columns))
+    table = doc.add_table(rows=1, cols=len(df_to_export.columns))
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df.columns):
+    for i, col in enumerate(df_to_export.columns):
         hdr_cells[i].text = col
-    for index, row in df.iterrows():
+    for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        for i, col in enumerate(df.columns):
+        for i, col in enumerate(df_to_export.columns):
             row_cells[i].text = str(row[col])
     buffer = BytesIO()
     doc.save(buffer)
@@ -86,58 +82,140 @@ def generar_word(df):
 # ----------------- Panel de Administración -----------------
 def admin_panel():
     st.title("🛠️ Panel de Administración")
-    st.write(f"Bienvenido, {st.session_state.usuario}") # Para confirmar que el usuario está logeado
+    st.write(f"Bienvenido, {st.session_state.usuario}")
 
-    df = pd.DataFrame({
-        "fecha": pd.to_datetime(pd.date_range(start="2023-01-01", periods=10)),
-        "lluvia": [23, 12, 45, 67, 34, 22, 11, 56, 78, 21],
-        "temperatura": [20, 21, 19, 18, 22, 23, 25, 24, 22, 21],
-        "humedad": [60, 65, 63, 66, 62, 64, 67, 61, 59, 58]
-    })
-    df.set_index('fecha', inplace=True)
+    st.subheader("📁 Cargar Datos (CSV)")
+    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
-    st.subheader("📈 Visualización de Datos")
-    st.line_chart(df)
+    df = None # Inicializar df como None
 
-    st.subheader("📊 Gráfico de Correlación")
-    fig = px.imshow(df.corr(numeric_only=True), text_auto=True)
-    st.plotly_chart(fig)
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success("Archivo CSV cargado exitosamente.")
 
-    st.subheader("📊 Gráfico de Dispersión (ejemplo de otra herramienta)")
-    fig_scatter = px.scatter(df, x=df.index, y="temperatura", size="lluvia", color="humedad",
-                             hover_name=df.index.strftime('%Y-%m-%d'))
-    st.plotly_chart(fig_scatter)
+            # Intentar convertir una columna a fecha si existe 'fecha' o similar
+            # Puedes ajustar esto según tus nombres de columna reales
+            if 'fecha' in df.columns:
+                try:
+                    df['fecha'] = pd.to_datetime(df['fecha'])
+                    df.set_index('fecha', inplace=True)
+                    st.info("Columna 'fecha' detectada y establecida como índice de tiempo.")
+                except Exception as e:
+                    st.warning(f"No se pudo convertir la columna 'fecha' a formato de fecha/hora: {e}")
+                    # Si no se puede convertir, no se usa como índice de tiempo
+            elif st.checkbox("¿Tu archivo tiene una columna de fecha/hora para el índice?"):
+                date_column = st.selectbox("Selecciona la columna de fecha/hora:", df.columns)
+                if date_column:
+                    try:
+                        df[date_column] = pd.to_datetime(df[date_column])
+                        df.set_index(date_column, inplace=True)
+                        st.info(f"Columna '{date_column}' detectada y establecida como índice de tiempo.")
+                    except Exception as e:
+                        st.error(f"Error al convertir la columna '{date_column}' a formato de fecha/hora: {e}")
+            
+            st.subheader("Vista Previa de los Datos")
+            st.dataframe(df)
 
-    st.subheader("📊 Histograma de Lluvia (ejemplo de otra herramienta)")
-    fig_hist = px.histogram(df, x="lluvia", marginal="rug", # rug adds a rug plot
-                           hover_data=df.columns)
-    st.plotly_chart(fig_hist)
+            # Guardar el DataFrame en session_state para que esté disponible en re-ejecuciones
+            st.session_state.df_cargado = df
+
+        except Exception as e:
+            st.error(f"Error al leer el archivo CSV: {e}")
+            st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
+            st.session_state.df_cargado = None # Resetear si hay error
+    else:
+        st.info("Por favor, sube un archivo CSV para visualizar los datos.")
+        # Si no se ha subido ningún archivo, y no hay uno cargado previamente,
+        # podríamos usar el DataFrame de ejemplo o dejar df como None
+        if 'df_cargado' in st.session_state and st.session_state.df_cargado is not None:
+            df = st.session_state.df_cargado
+            st.info("Mostrando datos cargados anteriormente.")
+        else:
+            # Aquí podríamos cargar un df de ejemplo si no hay nada cargado y no se quiere vacío.
+            # Por ahora, si no hay archivo subido ni cargado, df se mantiene None.
+            st.warning("No hay datos cargados para visualizar. Sube un CSV.")
+            df = pd.DataFrame({
+                "fecha": pd.to_datetime(pd.date_range(start="2023-01-01", periods=10)),
+                "lluvia": [23, 12, 45, 67, 34, 22, 11, 56, 78, 21],
+                "temperatura": [20, 21, 19, 18, 22, 23, 25, 24, 22, 21],
+                "humedad": [60, 65, 63, 66, 62, 64, 67, 61, 59, 58]
+            })
+            df.set_index('fecha', inplace=True)
+            st.info("Mostrando datos de ejemplo mientras no se carga un CSV.")
 
 
-    st.subheader("Tabla de Datos (ejemplo de otra herramienta)")
-    st.dataframe(df) # Muestra la tabla de datos
+    # Solo mostrar los gráficos si se ha cargado un DataFrame válido
+    if df is not None and not df.empty:
+        # Asegurarse de que solo se usan columnas numéricas para correlación y algunos gráficos
+        numeric_df = df.select_dtypes(include=['number'])
 
-    # Aquí puedes añadir más herramientas visuales o funcionales
-    st.subheader("Otras Funcionalidades")
-    st.info("Aquí irían otras herramientas o visualizaciones personalizadas.")
+        if not numeric_df.empty:
+            st.subheader("📈 Visualización de Datos (Series de Tiempo si hay índice de fecha)")
+            st.line_chart(df) # St.line_chart funciona mejor si el índice es de tiempo
 
-    st.subheader("📤 Exportar Datos")
-    pdf_data = generar_pdf(df)
-    word_data = generar_word(df)
+            st.subheader("📊 Gráfico de Correlación")
+            try:
+                fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
+                st.plotly_chart(fig)
+            except Exception as e:
+                st.warning(f"No se pudo generar el gráfico de correlación. Asegúrate de tener al menos dos columnas numéricas. Error: {e}")
 
-    st.download_button(
-        label="📄 Descargar PDF",
-        data=pdf_data,
-        file_name="reporte.pdf",
-        mime="application/pdf"
-    )
 
-    st.download_button(
-        label="📝 Descargar Word",
-        data=word_data,
-        file_name="reporte.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+            # Gráficos dinámicos basados en columnas del CSV
+            st.subheader("Exploración de Gráficos (Dinámico)")
+
+            columnas_numericas = df.select_dtypes(include=['number']).columns.tolist()
+            if len(columnas_numericas) >= 2:
+                col1, col2 = st.columns(2)
+                with col1:
+                    x_axis = st.selectbox("Selecciona eje X (Scatter Plot):", options=columnas_numericas, key="scatter_x")
+                with col2:
+                    y_axis = st.selectbox("Selecciona eje Y (Scatter Plot):", options=columnas_numericas, key="scatter_y")
+                if x_axis and y_axis:
+                    try:
+                        fig_scatter = px.scatter(df, x=x_axis, y=y_axis, title=f"Dispersión de {x_axis} vs {y_axis}")
+                        st.plotly_chart(fig_scatter)
+                    except Exception as e:
+                        st.warning(f"No se pudo generar el gráfico de dispersión: {e}")
+            else:
+                st.info("Necesitas al menos dos columnas numéricas para el gráfico de dispersión.")
+
+            if columnas_numericas:
+                hist_column = st.selectbox("Selecciona columna para Histograma:", options=columnas_numericas, key="hist_col")
+                if hist_column:
+                    try:
+                        fig_hist = px.histogram(df, x=hist_column, marginal="rug", title=f"Distribución de {hist_column}")
+                        st.plotly_chart(fig_hist)
+                    except Exception as e:
+                        st.warning(f"No se pudo generar el histograma: {e}")
+            else:
+                st.info("No hay columnas numéricas para generar histogramas.")
+
+        else:
+            st.warning("El DataFrame cargado no contiene columnas numéricas para generar gráficos.")
+
+        st.subheader("📤 Exportar Datos")
+        pdf_data = generar_pdf(df)
+        word_data = generar_word(df)
+
+        st.download_button(
+            label="📄 Descargar PDF",
+            data=pdf_data,
+            file_name="reporte.pdf",
+            mime="application/pdf"
+        )
+
+        st.download_button(
+            label="📝 Descargar Word",
+            data=word_data,
+            file_name="reporte.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    else:
+        # Mensaje si df es None o está vacío, para evitar errores en los gráficos
+        st.info("Carga un archivo CSV para ver los gráficos y opciones de exportación.")
+
 
     if st.button("Cerrar sesión"):
         logout()
@@ -146,6 +224,9 @@ def admin_panel():
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.usuario = ""
+# Inicializar df_cargado en session_state para persistencia
+if 'df_cargado' not in st.session_state:
+    st.session_state.df_cargado = None
 
 # ----------------- Main -----------------
 def main():
@@ -155,3 +236,4 @@ def main():
         login()
 
 main()
+                        
