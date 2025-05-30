@@ -42,11 +42,30 @@ def generar_pdf(df_to_export):
     pdf.ln()
 
     # Añadir los encabezados de las columnas
-    col_width = pdf.w / (len(df_to_export.columns) + 1) # +1 para el índice
+    # Calcular el ancho de la columna dinámicamente para el índice y las columnas de datos
+    num_cols = len(df_to_export.columns)
+    # Si el índice tiene nombre o se va a mostrar, cuenta como una columna más
+    if df_to_export.index.name or not df_to_export.index.is_unique or isinstance(df_to_export.index, pd.RangeIndex):
+        num_cols += 1 
+    
+    col_width = pdf.w / num_cols 
+    
+    # Añadir el encabezado del índice
     if df_to_export.index.name:
         pdf.cell(col_width, 10, str(df_to_export.index.name), border=1)
     else:
-        pdf.cell(col_width, 10, "Índice", border=1)
+        # Si el índice no tiene nombre y no es un RangeIndex (por defecto 0, 1, 2...), darle un nombre genérico
+        if not isinstance(df_to_export.index, pd.RangeIndex):
+            pdf.cell(col_width, 10, "Índice", border=1)
+        else:
+            # Si es un RangeIndex, no imprimimos "Índice" a menos que haya un nombre explícito
+            # O ajustamos el num_cols para que no considere el índice si es default
+            num_cols -= 1 # Reajustar si el índice es un RangeIndex y no se mostrará explícitamente como "Índice"
+            col_width = pdf.w / num_cols # Recalcular el ancho de la columna
+            # No imprimir la celda del índice para RangeIndex sin nombre
+            pass
+
+
     for col in df_to_export.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
@@ -54,10 +73,11 @@ def generar_pdf(df_to_export):
     # Añadir los datos
     for index, row in df_to_export.iterrows():
         # Manejar el índice, especialmente si es un Timestamp
-        if isinstance(index, pd.Timestamp):
-            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
-        else:
-            pdf.cell(col_width, 10, str(index), border=1)
+        if df_to_export.index.name or not isinstance(df_to_export.index, pd.RangeIndex):
+            if isinstance(index, pd.Timestamp):
+                pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
+            else:
+                pdf.cell(col_width, 10, str(index), border=1)
         
         # Añadir los valores de las filas
         for item in row:
@@ -65,9 +85,12 @@ def generar_pdf(df_to_export):
         pdf.ln()
 
     buffer = BytesIO()
-    pdf.output(buffer, 'S')
-    pdf_data = buffer.getvalue()
-    return pdf_data
+    # **AQUÍ ESTÁ LA MODIFICACIÓN CLAVE: .encode('latin-1')**
+    pdf_data = pdf.output(dest='S').encode('latin-1') 
+    buffer.write(pdf_data)
+    buffer.seek(0) # Retroceder al inicio del buffer antes de devolverlo
+    
+    return buffer.getvalue()
 
 # ----------------- Generar Word -----------------
 def generar_word(df_to_export):
@@ -76,10 +99,12 @@ def generar_word(df_to_export):
     
     # Asegúrate de incluir el nombre del índice si existe, o una columna de "Índice"
     columns_for_word = []
+    # Añadir el encabezado del índice si es relevante
     if df_to_export.index.name:
         columns_for_word.append(df_to_export.index.name)
-    else:
+    elif not isinstance(df_to_export.index, pd.RangeIndex):
         columns_for_word.append("Índice")
+    
     columns_for_word.extend(df_to_export.columns.tolist())
 
     table = doc.add_table(rows=1, cols=len(columns_for_word))
@@ -89,15 +114,20 @@ def generar_word(df_to_export):
     
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        # Añadir el índice
-        if isinstance(index, pd.Timestamp):
-            row_cells[0].text = str(index.strftime('%Y-%m-%d'))
-        else:
-            row_cells[0].text = str(index)
+        cell_idx = 0
+
+        # Añadir el índice si es relevante
+        if df_to_export.index.name or not isinstance(df_to_export.index, pd.RangeIndex):
+            if isinstance(index, pd.Timestamp):
+                row_cells[cell_idx].text = str(index.strftime('%Y-%m-%d'))
+            else:
+                row_cells[cell_idx].text = str(index)
+            cell_idx += 1
 
         # Añadir los valores de las columnas del DataFrame
-        for i, col_name in enumerate(df_to_export.columns):
-            row_cells[i+1].text = str(row[col_name]) # +1 porque la primera celda es para el índice
+        for col_name in df_to_export.columns:
+            row_cells[cell_idx].text = str(row[col_name])
+            cell_idx += 1
             
     buffer = BytesIO()
     doc.save(buffer)
@@ -232,4 +262,4 @@ def main():
         login()
 
 main()
-    
+            
