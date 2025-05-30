@@ -390,23 +390,5 @@ def admin_panel():
                         elif graph_type == "Dispersión":
                             fig = px.scatter(plot_df, x=x_axis, y=y_axis, title=f"Dispersión de {y_axis} vs {x_axis}")
                         elif graph_type == "Barras":
-                            fig = px.bar(plot_df, x=x_axis, y=y_axis, title=f"Barras de {y_axis} por {x_axis}")
-                        elif graph_type == "Histograma":
-                            fig = px.histogram(plot_df, x=x_axis, title=f"Distribución de {x_axis}", marginal="rug")
-                        elif graph_type == "Caja":
-                            fig = px.box(plot_df, x=x_axis, y=y_axis, title=f"Distribución en Caja de {y_axis} por {x_axis}")
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                    except Exception as e:
-                        st.error(f"No se pudo generar el gráfico de {graph_type}. Asegúrate de seleccionar columnas apropiadas. Error: {e}")
-                else:
-                    st.info("Selecciona las columnas para el eje X y Y para generar el gráfico.")
-            else:
-                st.info("Selecciona un tipo de gráfico para comenzar la visualización.")
-
-        else:
-            st.info("Carga un archivo CSV en la pestaña 'Cargar Datos' para visualizar aquí.")
-
-    with tab_exportacion:
-        st.header("Generar y Exportar Reportes")
-        st.info("Aquí puedes generar y descargar tus reportes
+                            fig = px.bar(plot_df, x=x_axis, y=y_axis, title=f"Barras de {y
+        
