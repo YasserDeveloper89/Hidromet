@@ -1,147 +1,109 @@
-import streamlit as st
-import pandas as pd
-import base64
-from io import BytesIO
-from docx import Document
-from fpdf import FPDF
-import matplotlib.pyplot as plt
-import numpy as np
+import streamlit as st import pandas as pd import numpy as np import base64 from io import BytesIO from docx import Document from fpdf import FPDF import matplotlib.pyplot as plt from datetime import datetime
 
-st.set_page_config(page_title="Hidromet Pro", layout="wide")
+st.set_page_config(layout="wide", page_title="HydroClima Pro", page_icon="🌧️")
 
-# ======== Modo Claro / Oscuro =========
-theme = st.sidebar.radio("🎨 Modo de visualización", ["Claro", "Oscuro"])
-is_dark = theme == "Oscuro"
-bg_color = "#1e1e1e" if is_dark else "#FFFFFF"
-text_color = "#FFFFFF" if is_dark else "#000000"
+Initialize session state
 
-st.markdown(f"""
-    <style>
-    html, body, [class*="css"]  {{
-        background-color: {bg_color} !important;
-        color: {text_color} !important;
-    }}
-    .stButton > button {{
-        background-color: {'#444' if is_dark else '#007bff'};
-        color: white;
-    }}
-    .stTextInput input {{
-        background-color: {'#333' if is_dark else 'white'};
-        color: {text_color};
-    }}
-    </style>
-""", unsafe_allow_html=True)
+if 'theme' not in st.session_state: st.session_state.theme = 'Light'
 
-st.title("🌧️ Hidromet Pro - Plataforma de Análisis y Reporte de Datos")
+Theme toggle
 
-uploaded_file = st.file_uploader("📤 Cargar archivo CSV", type="csv")
+with st.sidebar: st.markdown("## Ajustes") theme_toggle = st.selectbox("Tema de la aplicación", ["Light", "Dark"]) st.session_state.theme = theme_toggle uploaded_file = st.file_uploader("Sube tu archivo de datos hidrometeorológicos (.csv)", type=["csv"])
 
-if uploaded_file:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success("✅ Archivo cargado correctamente.")
-        st.dataframe(df)
+Apply dark theme style manually
 
-        st.subheader("📈 Visualización de Datos")
-        column = st.selectbox("Selecciona columna para graficar", df.columns)
+if st.session_state.theme == "Dark": st.markdown( """ <style> body { background-color: #1E1E1E; color: white; } .stTextInput, .stSelectbox, .stButton > button { background-color: #333 !important; color: white; } </style> """, unsafe_allow_html=True )
 
-        try:
-            df[column] = pd.to_numeric(df[column])
-        except:
-            pass
+Title
 
-        if pd.api.types.is_numeric_dtype(df[column]):
-            fig, ax = plt.subplots()
-            ax.plot(df[column], color='cyan' if is_dark else 'blue')
-            ax.set_title(f"Evolución de {column}", color=text_color)
-            fig.patch.set_facecolor(bg_color)
-            ax.set_facecolor(bg_color)
-            ax.tick_params(colors=text_color)
-            st.pyplot(fig)
-        elif pd.api.types.is_datetime64_any_dtype(df[column]) or column.lower() == "fecha":
-            if "Fecha" in df.columns:
-                df["Fecha"] = pd.to_datetime(df["Fecha"], errors='coerce')
-                numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
-                if numeric_columns:
-                    y_col = st.selectbox("Columna numérica para graficar vs Fecha", numeric_columns)
-                    fig, ax = plt.subplots()
-                    ax.plot(df["Fecha"], df[y_col], color='orange')
-                    ax.set_title(f"{y_col} vs Fecha", color=text_color)
-                    fig.patch.set_facecolor(bg_color)
-                    ax.set_facecolor(bg_color)
-                    ax.tick_params(colors=text_color)
-                    st.pyplot(fig)
-                else:
-                    st.warning("No hay columnas numéricas disponibles.")
-            else:
-                st.warning("No se encontró una columna 'Fecha' válida.")
-        else:
-            st.warning("Columna no numérica. No se puede graficar.")
+st.title("🌦️ HydroClima PRO - Sistema de Análisis Hidrometeorológico Avanzado") st.markdown("""---""")
 
-        st.subheader("📝 Generar Informe Personalizado")
-        resumen = st.text_area("Resumen del informe")
+Sidebar navigation
 
-        # ===== Función PDF =====
-        def generar_pdf(df, resumen):
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 14)
-            pdf.cell(200, 10, "Informe Hidrometeorológico", ln=True, align='C')
-            pdf.set_font("Arial", '', 12)
-            pdf.multi_cell(0, 10, resumen)
-            pdf.ln(5)
-            pdf.set_font("Arial", 'B', 10)
-            for col in df.columns:
-                pdf.cell(40, 8, str(col), border=1)
-            pdf.ln()
-            pdf.set_font("Arial", '', 8)
-            for _, row in df.iterrows():
-                for item in row:
-                    pdf.cell(40, 8, str(item), border=1)
-                pdf.ln()
-            return pdf.output(dest='S').encode('latin1')
+menu = st.sidebar.radio("Secciones", [ "📊 Dashboard General", "🔍 Comparación de Períodos", "📉 Análisis de Anomalías", "📈 Visualización Avanzada", "🧠 Informe Automático", "📤 Exportar Informes", "📚 Historial de Análisis" ])
 
-        # ===== Función Word =====
-        def generar_word(df, resumen):
-            doc = Document()
-            doc.add_heading("Informe Hidrometeorológico", 0)
-            doc.add_paragraph(resumen)
-            table = doc.add_table(rows=1, cols=len(df.columns))
-            hdr_cells = table.rows[0].cells
-            for i, col in enumerate(df.columns):
-                hdr_cells[i].text = str(col)
-            for _, row in df.iterrows():
-                row_cells = table.add_row().cells
-                for i, item in enumerate(row):
-                    row_cells[i].text = str(item)
-            word_io = BytesIO()
-            doc.save(word_io)
-            word_io.seek(0)
-            return word_io.read()
+Load data
 
-        col1, col2 = st.columns(2)
+if uploaded_file: df = pd.read_csv(uploaded_file) df.columns = df.columns.str.strip() df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') numeric_cols = df.select_dtypes(include=np.number).columns.tolist() else: df = pd.DataFrame()
 
-        with col1:
-            if st.button("📄 Descargar PDF"):
-                try:
-                    pdf_bytes = generar_pdf(df, resumen)
-                    b64_pdf = base64.b64encode(pdf_bytes).decode()
-                    href = f'<a href="data:application/pdf;base64,{b64_pdf}" download="informe.pdf">📥 Haz clic para descargar PDF</a>'
-                    st.markdown(href, unsafe_allow_html=True)
-                except Exception as e:
-                    st.error(f"❌ Error al generar PDF: {e}")
+Dashboard General
 
-        with col2:
-            if st.button("📝 Descargar Word"):
-                try:
-                    word_bytes = generar_word(df, resumen)
-                    b64_word = base64.b64encode(word_bytes).decode()
-                    href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64_word}" download="informe.docx">📝 Haz clic para descargar Word</a>'
-                    st.markdown(href, unsafe_allow_html=True)
-                except Exception as e:
-                    st.error(f"❌ Error al generar Word: {e}")
+if menu == "📊 Dashboard General" and not df.empty: st.subheader("Resumen de Indicadores") col1, col2, col3 = st.columns(3) with col1: st.metric("🌡️ Temperatura Media (°C)", f"{df[numeric_cols[0]].mean():.2f}") with col2: st.metric("💧 Precipitación Total (mm)", f"{df[numeric_cols[1]].sum():.1f}") with col3: st.metric("🌫️ Humedad Media (%)", f"{df[numeric_cols[2]].mean():.1f}")
 
-    except Exception as e:
-        st.error(f"❌ Error general al procesar el archivo: {e}")
-else:
-    st.info("📂 Por favor, sube un archivo CSV para comenzar.")
+Comparador de Periodos
+
+if menu == "🔍 Comparación de Períodos" and not df.empty: st.subheader("Comparar dos rangos de fechas") d1 = st.date_input("Inicio Periodo A", df['Fecha'].min()) d2 = st.date_input("Fin Periodo A", df['Fecha'].max()) d3 = st.date_input("Inicio Periodo B", df['Fecha'].min()) d4 = st.date_input("Fin Periodo B", df['Fecha'].max())
+
+a = df[(df['Fecha'] >= pd.to_datetime(d1)) & (df['Fecha'] <= pd.to_datetime(d2))]
+b = df[(df['Fecha'] >= pd.to_datetime(d3)) & (df['Fecha'] <= pd.to_datetime(d4))]
+
+diff_temp = a[numeric_cols[0]].mean() - b[numeric_cols[0]].mean()
+st.info(f"Diferencia de temperatura media: {diff_temp:.2f} °C")
+
+fig, ax = plt.subplots()
+ax.plot(a['Fecha'], a[numeric_cols[0]], label="Periodo A")
+ax.plot(b['Fecha'], b[numeric_cols[0]], label="Periodo B")
+ax.legend()
+st.pyplot(fig)
+
+Análisis de Anomalías
+
+if menu == "📉 Análisis de Anomalías" and not df.empty: st.subheader("Detección de Anomalías") col = st.selectbox("Selecciona columna a analizar", numeric_cols) z = (df[col] - df[col].mean()) / df[col].std() df['Anómalo'] = z.abs() > 2 st.dataframe(df[df['Anómalo']])
+
+Visualización avanzada
+
+if menu == "📈 Visualización Avanzada" and not df.empty: st.subheader("Visualización de Múltiples Variables") selected = st.multiselect("Selecciona columnas", numeric_cols, default=numeric_cols) fig, ax = plt.subplots() for c in selected: ax.plot(df['Fecha'], df[c], label=c) ax.legend() st.pyplot(fig)
+
+Informe Automático
+
+if menu == "🧠 Informe Automático" and not df.empty: st.subheader("Resumen de Informe Automático") resumen = f"Durante el período de análisis, se registró una temperatura media de {df[numeric_cols[0]].mean():.2f}°C, una precipitación acumulada de {df[numeric_cols[1]].sum():.1f} mm y una humedad relativa media de {df[numeric_cols[2]].mean():.1f}%." st.text_area("Informe generado:", resumen, height=150)
+
+Exportar informes
+
+if menu == "📤 Exportar Informes" and not df.empty: st.subheader("Exportar informe profesional") informe_texto = st.text_area("Texto del informe", "Análisis de datos hidrometeorológicos detallado...", height=150)
+
+def export_pdf():
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, informe_texto)
+    pdf.ln()
+    for col in df.columns:
+        pdf.cell(40, 10, col, 1)
+    pdf.ln()
+    for i in df.head(20).itertuples(index=False):
+        for v in i:
+            pdf.cell(40, 10, str(v), 1)
+        pdf.ln()
+    buffer = BytesIO()
+    pdf.output(buffer)
+    return buffer.getvalue()
+
+def export_word():
+    doc = Document()
+    doc.add_heading("Informe Hidrometeorológico", 0)
+    doc.add_paragraph(informe_texto)
+    t = doc.add_table(rows=1, cols=len(df.columns))
+    hdr_cells = t.rows[0].cells
+    for i, c in enumerate(df.columns):
+        hdr_cells[i].text = c
+    for row in df.head(20).values.tolist():
+        row_cells = t.add_row().cells
+        for i, val in enumerate(row):
+            row_cells[i].text = str(val)
+    b = BytesIO()
+    doc.save(b)
+    return b.getvalue()
+
+col1, col2 = st.columns(2)
+with col1:
+    if st.download_button("📥 Descargar PDF", data=export_pdf(), file_name="informe.pdf"):
+        st.success("PDF generado")
+with col2:
+    if st.download_button("📥 Descargar Word", data=export_word(), file_name="informe.docx"):
+        st.success("Word generado")
+
+Historial
+
+if menu == "📚 Historial de Análisis": st.subheader("Historial disponible próximamente") st.info("En futuras versiones podrás consultar y volver a generar informes anteriores automáticamente.")
+
