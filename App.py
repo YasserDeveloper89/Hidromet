@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,148 +9,135 @@ from fpdf import FPDF
 from datetime import datetime
 import base64
 
-st.set_page_config(page_title="Panel Hidromet", layout="wide")
+# ------------------------- LOGIN & SESSION ----------------------------
+def login():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
 
-# --- Gestión de sesión ---
-if "logged_in" not in st.session_state:
+    if st.session_state.logged_in:
+        return True
+
+    st.title("🔐 Panel de Acceso Hidromet Premium")
+    username = st.text_input("Usuario")
+    password = st.text_input("Contraseña", type="password")
+
+    if st.button("Iniciar sesión"):
+        if username == "admin" and password == "1234":
+            st.session_state.logged_in = True
+            st.success("Login exitoso. Bienvenido, admin")
+            st.experimental_rerun()
+        else:
+            st.error("Usuario o contraseña incorrectos")
+    return False
+
+def logout():
     st.session_state.logged_in = False
+    st.experimental_rerun()
 
-# --- Función para generar PDF ---
+# ------------------------- FUNCIONES PDF / WORD ------------------------
 def generar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos", ln=True, align="C")
+    pdf.cell(200, 10, txt="Reporte de Datos Hidromet", ln=True, align='C')
     pdf.ln(10)
-    for i, row in df.iterrows():
-        pdf.multi_cell(0, 10, txt=str(row.to_dict()))
+    for index, row in df.iterrows():
+        row_data = ' | '.join([str(elem) for elem in row])
+        pdf.cell(200, 10, txt=row_data, ln=True)
     buffer = BytesIO()
     pdf.output(buffer)
-    return buffer.getvalue()
+    buffer.seek(0)
+    return buffer.read()
 
-# --- Función para generar DOCX ---
-def generar_docx(df):
+def generar_word(df):
     doc = Document()
-    doc.add_heading('Informe de Datos', 0)
-    for i, row in df.iterrows():
-        doc.add_paragraph(str(row.to_dict()))
+    doc.add_heading('Reporte de Datos Hidromet', 0)
+    table = doc.add_table(rows=1, cols=len(df.columns))
+    hdr_cells = table.rows[0].cells
+    for i, col in enumerate(df.columns):
+        hdr_cells[i].text = str(col)
+    for _, row in df.iterrows():
+        row_cells = table.add_row().cells
+        for i, val in enumerate(row):
+            row_cells[i].text = str(val)
     buffer = BytesIO()
     doc.save(buffer)
-    return buffer.getvalue()
+    buffer.seek(0)
+    return buffer.read()
 
-# --- Login ---
-def login():
-    with st.form("login_form"):
-        st.subheader("Inicio de Sesión")
-        username = st.text_input("Usuario")
-        password = st.text_input("Contraseña", type="password")
-        submit = st.form_submit_button("Iniciar Sesión")
-        if submit:
-            if username == "admin" and password == "admin":
-                st.session_state.logged_in = True
-                st.success("✅ Login exitoso. Bienvenido, admin")
-                st.experimental_set_query_params(logged_in="true")
-                st.rerun()
-            else:
-                st.error("Credenciales incorrectas.")
-
-# --- Logout ---
-def logout():
-    st.session_state.logged_in = False
-    st.experimental_set_query_params()
-    st.rerun()
-
-# --- Panel de Administración ---
+# ------------------------- PANEL ADMINISTRADOR ------------------------
 def admin_panel():
-    st.sidebar.title("Menú de Administración")
-    if st.sidebar.button("Cerrar Sesión"):
-        logout()
+    st.title("🌐 Panel de Administración Hidromet Premium")
+    st.sidebar.button("🔓 Cerrar sesión", on_click=logout)
 
-    st.title("Panel de Administración Hidromet")
-    st.markdown("### Carga y Visualización de Datos")
+    uploaded_file = st.sidebar.file_uploader("Subir archivo CSV", type="csv")
 
-    uploaded_file = st.file_uploader("Cargar archivo CSV", type=["csv"])
-    if uploaded_file is not None:
+    if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        st.dataframe(df)
 
-        st.markdown("### Exportar Informes")
-        col1, col2 = st.columns(2)
-        with col1:
-            pdf_data = generar_pdf(df)
-            b64 = base64.b64encode(pdf_data).decode()
-            href = f'<a href="data:application/pdf;base64,{b64}" download="informe.pdf">📄 Descargar PDF</a>'
-            st.markdown(href, unsafe_allow_html=True)
-
-        with col2:
-            docx_data = generar_docx(df)
-            b64 = base64.b64encode(docx_data).decode()
-            href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="informe.docx">📝 Descargar Word</a>'
-            st.markdown(href, unsafe_allow_html=True)
-
-        st.markdown("### Herramientas de Análisis")
-        st.subheader("1. Estadísticas Generales")
-        st.write(df.describe())
-
-        st.subheader("2. Valores Nulos")
-        st.write(df.isnull().sum())
-
-        st.subheader("3. Histograma de Columnas Numéricas")
-        num_cols = df.select_dtypes(include=np.number).columns
-        if len(num_cols) > 0:
-            selected_col = st.selectbox("Selecciona columna", num_cols)
-            fig = px.histogram(df, x=selected_col)
-            st.plotly_chart(fig)
-        
-        st.subheader("4. Series Temporales")
         if 'fecha' in df.columns:
             df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
-            df = df.dropna(subset=['fecha'])
             df.set_index('fecha', inplace=True)
-            for col in num_cols:
-                st.line_chart(df[col])
 
-        st.subheader("5. Matriz de Correlación")
-        df_numeric = df.select_dtypes(include='number')
-        if not df_numeric.empty:
-            fig_corr = px.imshow(df_numeric.corr(), text_auto=True, color_continuous_scale='Viridis')
-            st.plotly_chart(fig_corr)
+        st.dataframe(df.head())
+
+        st.subheader("📈 Visualización de Datos")
+        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+
+        if numeric_cols:
+            col_x = st.selectbox("Columna X", numeric_cols)
+            col_y = st.selectbox("Columna Y", numeric_cols)
+            fig = px.line(df, x=col_x, y=col_y, title="Gráfico de Líneas")
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("No hay columnas numéricas suficientes.")
+            st.warning("No hay columnas numéricas para graficar.")
 
-        st.subheader("6. Gráfico de Dispersión")
-        if len(num_cols) >= 2:
-            col_x = st.selectbox("Eje X", num_cols, key="disp_x")
-            col_y = st.selectbox("Eje Y", num_cols, key="disp_y")
-            st.plotly_chart(px.scatter(df, x=col_x, y=col_y))
+        st.subheader("📊 Matriz de Correlación")
+        numeric_df = df.select_dtypes(include='number')
+        if not numeric_df.empty:
+            fig_corr = px.imshow(numeric_df.corr(), text_auto=True, aspect="auto", title="Matriz de Correlación")
+            st.plotly_chart(fig_corr, use_container_width=True)
+        else:
+            st.warning("No se encontraron datos numéricos para la correlación.")
 
-        st.subheader("7. Boxplot de Variables")
-        col_box = st.selectbox("Variable para Boxplot", num_cols, key="box")
-        st.plotly_chart(px.box(df, y=col_box))
+        st.subheader("📤 Exportar Reportes")
+        pdf_data = generar_pdf(df)
+        word_data = generar_word(df)
 
-        st.subheader("8. Mapa de Calor (si hay lat/lon)")
-        if 'lat' in df.columns and 'lon' in df.columns:
-            st.map(df[['lat', 'lon']])
+        b64_pdf = base64.b64encode(pdf_data).decode()
+        b64_word = base64.b64encode(word_data).decode()
 
-        st.subheader("9. Gráfico de Barras")
-        col_bar = st.selectbox("Variable para gráfico de barras", df.columns, key="bar")
-        st.plotly_chart(px.bar(df, x=col_bar))
+        href_pdf = f'<a href="data:application/pdf;base64,{b64_pdf}" download="reporte.pdf">📄 Descargar PDF</a>'
+        href_word = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64_word}" download="reporte.docx">📝 Descargar Word</a>'
 
-        st.subheader("10. Exportar datos filtrados")
-        filtro = st.text_input("Filtrar por valor exacto")
-        if filtro:
-            df_filtrado = df[df.astype(str).apply(lambda row: row.str.contains(filtro)).any(axis=1)]
-            st.dataframe(df_filtrado)
-            st.download_button("Descargar CSV filtrado", df_filtrado.to_csv(index=False), "filtro.csv", "text/csv")
+        st.markdown(href_pdf, unsafe_allow_html=True)
+        st.markdown(href_word, unsafe_allow_html=True)
+
+        st.subheader("🛠️ Herramientas Técnicas Adicionales")
+        st.markdown("- Análisis estadístico básico")
+        st.write(df.describe())
+
+        st.markdown("- Valores nulos por columna")
+        st.write(df.isnull().sum())
+
+        st.markdown("- Histograma")
+        selected_col = st.selectbox("Seleccionar columna para histograma", numeric_cols)
+        st.plotly_chart(px.histogram(df, x=selected_col), use_container_width=True)
+
+        st.markdown("- Boxplot")
+        st.plotly_chart(px.box(df, y=selected_col), use_container_width=True)
+
+        st.markdown("- Mapa de calor de valores nulos")
+        st.plotly_chart(px.imshow(df.isnull(), color_continuous_scale='reds'), use_container_width=True)
 
     else:
-        st.info("Por favor cargue un archivo CSV para comenzar.")
+        st.warning("Por favor cargue un archivo CSV para acceder a las herramientas.")
 
-# --- Main ---
+# ------------------------- MAIN ------------------------
 def main():
-    if st.session_state.logged_in:
+    if login():
         admin_panel()
-    else:
-        login()
 
-main()
+if __name__ == "__main__":
+    main()
+    
