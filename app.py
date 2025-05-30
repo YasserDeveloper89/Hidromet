@@ -7,146 +7,136 @@ from io import BytesIO
 from docx import Document
 from fpdf import FPDF
 from datetime import datetime
+import base64
 
-st.set_page_config(page_title="Panel Hidrometeorológico", layout="wide")
+# ----------------------- CONFIG -----------------------
+st.set_page_config(page_title="Panel Administrador", layout="wide")
 
-# Usuarios de ejemplo
-USERS = {
-    "admin": "admin123",
-    "usuario": "usuario123"
-}
+# ----------------------- SESSION INIT -----------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
 
+# ----------------------- LOGIN FUNCTION -----------------------
 def login():
-    st.title("Inicio de Sesión")
+    st.title("Iniciar sesión")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
+    login_btn = st.button("Iniciar sesión")
 
-    if st.button("Iniciar sesión"):
-        if username in USERS and USERS[username] == password:
+    if login_btn:
+        if username == "admin" and password == "admin123":
             st.session_state.logged_in = True
             st.session_state.username = username
-            st.success(f"✅ Login exitoso. Bienvenido, {username}")
+            st.rerun()  # Recarga inmediatamente
         else:
-            st.error("❌ Credenciales inválidas.")
+            st.error("Credenciales inválidas")
 
+# ----------------------- LOGOUT FUNCTION -----------------------
 def logout():
-    if st.button("Cerrar sesión"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.experimental_rerun()
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.success("Se ha cerrado la sesión correctamente")
+    st.rerun()
 
-def cargar_datos():
-    st.subheader("📤 Cargar archivo de datos")
-    file = st.file_uploader("Seleccione un archivo CSV", type=["csv"])
-    if file:
-        try:
-            df = pd.read_csv(file)
-            st.session_state["data"] = df
-            st.success("✅ Datos cargados exitosamente.")
-        except Exception as e:
-            st.error(f"❌ Error al leer el archivo: {e}")
-
+# ----------------------- PDF EXPORT FUNCTION -----------------------
 def export_pdf(df):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos Hidrometeorológicos", ln=True, align='C')
-    pdf.ln(10)
-    for i in range(min(len(df), 30)):
-        row = ', '.join([str(x) for x in df.iloc[i]])
-        pdf.multi_cell(0, 10, txt=row)
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
-    st.download_button("📄 Descargar PDF", data=pdf_output, file_name="informe.pdf", mime="application/pdf")
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, txt="Informe de Datos", ln=True, align="C")
+        pdf.ln(10)
+        col_names = ", ".join(df.columns)
+        pdf.multi_cell(0, 10, col_names)
+        for i, row in df.iterrows():
+            line = ", ".join(str(val) for val in row)
+            pdf.multi_cell(0, 10, line)
+        pdf_output = BytesIO()
+        pdf.output(pdf_output)
+        pdf_output.seek(0)
+        b64 = base64.b64encode(pdf_output.read()).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="informe.pdf">Descargar PDF</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error al generar PDF: {e}")
 
+# ----------------------- WORD EXPORT FUNCTION -----------------------
 def export_word(df):
-    doc = Document()
-    doc.add_heading("Informe Hidrometeorológico", 0)
-    table = doc.add_table(rows=1, cols=len(df.columns))
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df.columns):
-        hdr_cells[i].text = col
-    for index, row in df.iterrows():
-        row_cells = table.add_row().cells
-        for i, val in enumerate(row):
-            row_cells[i].text = str(val)
-    word_output = BytesIO()
-    doc.save(word_output)
-    word_output.seek(0)
-    st.download_button("📄 Descargar Word", data=word_output, file_name="informe.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    try:
+        doc = Document()
+        doc.add_heading("Informe de Datos", 0)
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(df.columns):
+            hdr_cells[i].text = col
+        for index, row in df.iterrows():
+            row_cells = table.add_row().cells
+            for i, cell in enumerate(row):
+                row_cells[i].text = str(cell)
+        output = BytesIO()
+        doc.save(output)
+        output.seek(0)
+        b64 = base64.b64encode(output.read()).decode()
+        href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="informe.docx">Descargar Word</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error al generar Word: {e}")
 
+# ----------------------- ADMIN PANEL -----------------------
 def admin_panel():
-    st.title("🔧 Panel de Control - Administrador")
-    logout()
+    st.title("Panel de Administración")
+    st.sidebar.button("Cerrar sesión", on_click=logout)
 
-    if "data" not in st.session_state:
-        cargar_datos()
-        return
+    uploaded_file = st.file_uploader("Suba su archivo CSV de mediciones", type=["csv"])
 
-    df = st.session_state["data"]
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.success("Archivo cargado con éxito")
+            st.subheader("Vista de Datos")
+            st.dataframe(df)
 
-    st.subheader("📊 Vista Previa de los Datos")
-    st.dataframe(df.head(50), use_container_width=True)
+            st.subheader("Exportaciones")
+            col1, col2 = st.columns(2)
+            with col1:
+                export_pdf(df)
+            with col2:
+                export_word(df)
 
-    st.subheader("📈 Gráficos Interactivos")
-    columnas_numericas = df.select_dtypes(include=np.number).columns.tolist()
-    if len(columnas_numericas) >= 2:
-        col1, col2 = st.columns(2)
-        with col1:
-            x_axis = st.selectbox("Eje X", columnas_numericas)
-        with col2:
-            y_axis = st.selectbox("Eje Y", columnas_numericas, index=1)
-        fig = px.scatter(df, x=x_axis, y=y_axis, title="Relación entre variables")
-        st.plotly_chart(fig, use_container_width=True)
+            st.subheader("Gráficos Interactivos")
+            num_df = df.select_dtypes(include=[np.number])
+            if not num_df.empty:
+                fig_corr = px.imshow(num_df.corr(), text_auto=True, aspect="auto", title="Mapa de Correlación")
+                st.plotly_chart(fig_corr, use_container_width=True)
 
-        st.subheader("📊 Mapa de Correlación")
-        fig_corr = px.imshow(df[columnas_numericas].corr(), text_auto=True, aspect="auto")
-        st.plotly_chart(fig_corr, use_container_width=True)
+                for col in num_df.columns:
+                    st.plotly_chart(px.line(num_df, y=col, title=f"Tendencia de {col}"), use_container_width=True)
+            else:
+                st.warning("No hay columnas numéricas para visualizar")
 
-    st.subheader("📤 Exportar Informes")
-    export_pdf(df)
-    export_word(df)
+            st.subheader("Estadísticas Descriptivas")
+            st.write(num_df.describe())
 
-    st.subheader("🛠️ Herramientas Analíticas Avanzadas")
-    st.markdown("- Filtrado de datos por rango")
-    st.markdown("- Análisis estadístico básico (media, mediana, desviación estándar)")
-    st.markdown("- Análisis de tendencias y estacionalidad")
-    st.markdown("- Visualización temporal de variables")
-    st.markdown("- Predicción simple con regresión lineal")
-    st.markdown("- Detección de valores atípicos")
-    st.markdown("- Exportación gráfica a imagen")
-    st.markdown("- Reportes personalizados")
-    st.markdown("- Panel resumen de KPIs")
-    st.markdown("- Conexión con sensores (simulado)")
-    st.markdown("- Alerta automática ante valores anómalos")
-    st.markdown("- Simulaciones climáticas básicas")
-    st.markdown("- Generación de gráficas comparativas")
-    st.markdown("- Dashboard general de monitoreo")
-    st.markdown("- Control de acceso por usuario")
+            st.subheader("Histograma")
+            col = st.selectbox("Selecciona una columna", num_df.columns)
+            st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
 
-def user_panel():
-    st.title("📄 Panel de Usuario")
-    logout()
-    if "data" not in st.session_state:
-        cargar_datos()
-        return
+            # Añadir 10 herramientas más aquí...
+            # Ej: clustering, PCA, detección de outliers, dashboard por fecha, etc.
 
-    df = st.session_state["data"]
-    st.dataframe(df)
-    st.line_chart(df.select_dtypes(include=np.number))
+        except Exception as e:
+            st.error(f"Error al procesar el archivo: {e}")
+    else:
+        st.info("Por favor cargue un archivo para acceder a las herramientas")
 
+# ----------------------- MAIN -----------------------
 def main():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-
     if st.session_state.logged_in:
-        if st.session_state.username == "admin":
-            admin_panel()
-        else:
-            user_panel()
+        admin_panel()
     else:
         login()
 
 if __name__ == "__main__":
     main()
+    
