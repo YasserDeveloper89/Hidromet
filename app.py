@@ -4,6 +4,7 @@ from io import BytesIO
 from docx import Document
 from docx.shared import Inches
 from fpdf import FPDF
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="HidroClima Pro", layout="wide")
 st.title("🌧️ HidroClima Pro")
@@ -17,6 +18,18 @@ if archivo:
         st.success("✅ Archivo cargado exitosamente.")
         st.dataframe(df)
 
+        # Filtros y estadísticas
+        with st.expander("🔍 Herramientas de Análisis"):
+            st.subheader("Estadísticas")
+            st.write(df.describe())
+
+            st.subheader("Seleccionar columnas para análisis")
+            columnas = st.multiselect("Selecciona columnas numéricas:", df.select_dtypes(include='number').columns)
+
+            if columnas:
+                st.line_chart(df[columnas])
+
+        # Generar informe
         st.subheader("📝 Generar informe")
         resumen = st.text_area("Escribe tu informe aquí:", height=200)
 
