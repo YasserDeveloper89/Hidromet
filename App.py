@@ -184,9 +184,6 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-    else:
-        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación aquí.")
-
 
     if st.button("Cerrar sesión"):
         logout()
