@@ -1,83 +1,147 @@
-import streamlit as st import pandas as pd import numpy as np from io import BytesIO from docx import Document from fpdf import FPDF import plotly.graph_objects as go from datetime import datetime
+import streamlit as st
+import pandas as pd
+import numpy as np
+from io import BytesIO
+from docx import Document
+from fpdf import FPDF
+import plotly.graph_objects as go
+from datetime import datetime
 
---- Estilo base ---
+# Configuración de la página
+st.set_page_config(page_title="HidroClimaPRO", layout="wide")
 
-st.set_page_config(page_title="HidroClimaPro", layout="wide")
+# Estilos personalizados
+st.markdown("""
+    <style>
+        body {
+            background-color: #f5f7fa;
+        }
+        .css-1d391kg {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 15px;
+        }
+        .reportview-container .main .block-container{
+            padding: 2rem 3rem 2rem 3rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-st.markdown(""" <style> body { background-color: #f7f9fc; color: #1c1e21; } .main .block-container { padding-top: 2rem; padding-bottom: 2rem; } .stButton button { background-color: #0e76a8; color: white; border: None; padding: 0.6rem 1.2rem; border-radius: 6px; font-size: 1rem; font-weight: bold; } .stButton button:hover { background-color: #095f88; color: white; } </style> """, unsafe_allow_html=True)
+st.title("🌧️ HidroClimaPRO - Análisis Avanzado Hidrometeorológico")
 
---- Encabezado ---
+# Subida de datos
+st.sidebar.header("📂 Cargar archivo")
+uploaded_file = st.sidebar.file_uploader("Sube un archivo CSV con datos meteorológicos", type=["csv"])
 
-st.title("🌦️ HidroClimaPro - Plataforma de Monitoreo y Análisis") st.markdown(""" Bienvenido a HidroClimaPro
+if uploaded_file:
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.success("✅ Archivo cargado correctamente")
+    except Exception as e:
+        st.error(f"❌ Error al leer el archivo: {e}")
+        st.stop()
 
-Una plataforma profesional e intuitiva para cargar, analizar y exportar datos climáticos. Ideal para empresas, ingenieros y entidades de monitoreo. """)
+    st.markdown("## 🧮 Vista Previa de los Datos")
+    st.dataframe(df.head())
 
---- Subida de archivo ---
+    # Selección de columna para visualización
+    st.markdown("## 📊 Visualización Interactiva")
+    selected_column = st.selectbox("Selecciona una columna numérica", df.select_dtypes(include=np.number).columns)
 
-st.sidebar.header("📁 Cargar archivo") uploaded_file = st.sidebar.file_uploader("Sube un archivo CSV", type=["csv"])
+    if selected_column:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df[selected_column],
+            mode='lines+markers',
+            name=selected_column,
+            line=dict(color='royalblue', width=2),
+            marker=dict(size=6)
+        ))
+        fig.update_layout(title=f"Gráfico de {selected_column}",
+                          xaxis_title="Índice",
+                          yaxis_title=selected_column,
+                          template="plotly_white")
+        st.plotly_chart(fig, use_container_width=True)
 
-if uploaded_file is not None: try: df = pd.read_csv(uploaded_file) st.success("✅ Datos cargados correctamente")
+    st.markdown("## 📈 Estadísticas Descriptivas")
+    st.write(df.describe())
 
-# Vista previa
-    st.subheader("🔍 Vista previa de datos")
-    st.dataframe(df, use_container_width=True)
+    st.markdown("---")
 
-    # Análisis rápido
-    st.subheader("📊 Análisis general")
-    st.write("Filas:", df.shape[0])
-    st.write("Columnas:", df.shape[1])
-    st.write("Resumen:")
-    st.dataframe(df.describe(), use_container_width=True)
+    # Generar informe
+    st.markdown("## 📝 Generar Informe")
+    report_text = st.text_area("Escribe un resumen para el informe", placeholder="Resumen técnico o conclusiones...")
 
-    # --- Visualización profesional ---
-    st.subheader("📈 Visualización interactiva")
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    if numeric_cols:
-        col_x = st.selectbox("Columna para eje X", df.columns)
-        col_y = st.selectbox("Columna para eje Y", numeric_cols)
-        chart = go.Figure()
-        chart.add_trace(go.Scatter(x=df[col_x], y=df[col_y], mode='lines+markers', name=f'{col_y} vs {col_x}'))
-        chart.update_layout(template="plotly_white", height=500, title="Gráfico Interactivo")
-        st.plotly_chart(chart, use_container_width=True)
-    else:
-        st.warning("No se encontraron columnas numéricas para graficar.")
+    # Botón para generar documentos
+    if st.button("📄 Generar Documentos"):
 
-    # --- Generador de informe ---
-    st.subheader("📝 Generar Informe")
-    comentario = st.text_area("Escribe tu resumen o análisis del informe")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    if st.button("Generar Informe Word y PDF"):
+        # Word
+        doc = Document()
+        doc.add_heading("Informe Hidrometeorológico", 0)
+        doc.add_paragraph(f"Fecha de generación: {timestamp}")
+        doc.add_heading("Resumen:", level=1)
+        doc.add_paragraph(report_text if report_text else "Sin resumen.")
+        doc.add_heading("Datos Analizados:", level=1)
+        doc.add_paragraph("Vista previa de los primeros registros:")
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(df.columns):
+            hdr_cells[i].text = str(col)
+        for _, row in df.head(10).iterrows():
+            row_cells = table.add_row().cells
+            for i, val in enumerate(row):
+                row_cells[i].text = str(val)
+        word_file = BytesIO()
+        doc.save(word_file)
+        word_file.seek(0)
+
+        # PDF
         try:
-            # Documento Word
-            doc = Document()
-            doc.add_heading("Informe de Datos Climáticos", level=1)
-            doc.add_paragraph(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            doc.add_paragraph("\nResumen del Análisis:")
-            doc.add_paragraph(comentario)
-            doc.add_paragraph("\nVista previa de datos:")
-            doc.add_paragraph(df.head().to_string())
-            word_stream = BytesIO()
-            doc.save(word_stream)
-            word_stream.seek(0)
-            st.download_button("📥 Descargar Word", word_stream, file_name="informe_climatico.docx")
-
-            # PDF
             pdf = FPDF()
             pdf.add_page()
-            pdf.set_font("Arial", size=12)
-            pdf.cell(200, 10, txt="Informe de Datos Climáticos", ln=1, align='C')
-            pdf.cell(200, 10, txt=f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=2)
-            pdf.multi_cell(0, 10, txt="Resumen:\n" + comentario)
-            pdf.multi_cell(0, 10, txt="Vista previa de datos:\n" + df.head().to_string())
-            pdf_stream = BytesIO()
-            pdf.output(pdf_stream)
-            pdf_stream.seek(0)
-            st.download_button("📥 Descargar PDF", pdf_stream, file_name="informe_climatico.pdf")
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(200, 10, "Informe Hidrometeorológico", ln=True, align="C")
+            pdf.set_font("Arial", "", 12)
+            pdf.ln(10)
+            pdf.cell(200, 10, f"Fecha: {timestamp}", ln=True)
+
+            pdf.ln(5)
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(200, 10, "Resumen:", ln=True)
+            pdf.set_font("Arial", "", 12)
+            pdf.multi_cell(0, 10, report_text if report_text else "Sin resumen.")
+
+            pdf.ln(5)
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(200, 10, "Vista previa de los datos:", ln=True)
+            pdf.set_font("Arial", "", 10)
+            for i, row in df.head(10).iterrows():
+                row_text = " | ".join([f"{col}: {row[col]}" for col in df.columns])
+                pdf.multi_cell(0, 10, row_text)
+
+            pdf_output = BytesIO()
+            pdf.output(pdf_output)
+            pdf_output.seek(0)
+
+            st.download_button(
+                label="📥 Descargar Informe PDF",
+                data=pdf_output,
+                file_name=f"Informe_{timestamp}.pdf",
+                mime="application/pdf"
+            )
         except Exception as e:
-            st.error(f"Error al generar documentos: {e}")
+            st.error(f"Error al generar PDF: {e}")
 
-except Exception as e:
-    st.error(f"Error al procesar archivo: {e}")
+        # Descargar Word
+        st.download_button(
+            label="📥 Descargar Informe Word",
+            data=word_file,
+            file_name=f"Informe_{timestamp}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
-else: st.info("🔄 Esperando que subas un archivo CSV para comenzar.")
-
+else:
+    st.warning("📎 Por favor sube un archivo CSV para comenzar.")
