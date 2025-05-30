@@ -1,166 +1,148 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
 from docx import Document
 from fpdf import FPDF
-from datetime import datetime
 import base64
+from datetime import datetime
 
-st.set_page_config(page_title="Hidromet Panel Pro", layout="wide")
+# Seguridad de login
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
 
-# Datos de acceso de ejemplo
-USER_CREDENTIALS = {
-    "admin": "admin123",
-    "tecnico": "tecnico123"
-}
-
-def authenticate(username, password):
-    return USER_CREDENTIALS.get(username) == password
+# Funciones de sesión
 
 def login():
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-        st.session_state.username = ""
-
-    with st.form("login_form"):
-        st.markdown("### Iniciar sesión")
-        username = st.text_input("Usuario")
-        password = st.text_input("Contraseña", type="password")
-        submit = st.form_submit_button("Iniciar sesión")
-
-        if submit:
-            if authenticate(username, password):
-                st.session_state.authenticated = True
-                st.session_state.username = username
-                st.success(f"Login exitoso. Bienvenido, {username}")
-            else:
-                st.error("Credenciales inválidas")
+    st.title("Iniciar sesión")
+    username = st.text_input("Usuario")
+    password = st.text_input("Contraseña", type="password")
+    if st.button("Iniciar sesión"):
+        if username == "admin" and password == "admin123":
+            st.session_state.authenticated = True
+            st.session_state.username = username
+        else:
+            st.error("Credenciales inválidas")
 
 def logout():
     st.session_state.authenticated = False
-    st.session_state.username = ""
-    st.experimental_set_query_params()
+    st.session_state.username = None
+    st.experimental_rerun()
 
+# Exportación a PDF y Word
 
-def export_pdf(df):
+def generar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos Hidrometeorológicos", ln=True, align="C")
+    pdf.cell(200, 10, txt="Informe de Datos Hidromet", ln=True, align='C')
+    for i, row in df.iterrows():
+        linea = ' | '.join(str(x) for x in row)
+        pdf.multi_cell(0, 10, linea)
+    buffer = BytesIO()
+    pdf.output(buffer)
+    return buffer.getvalue()
 
-    for i in range(len(df)):
-        row = ', '.join([str(x) for x in df.iloc[i]])
-        pdf.cell(200, 10, txt=row, ln=True, align="L")
-
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
-    b64 = base64.b64encode(pdf_output.read()).decode()
-    href = f'<a href="data:application/pdf;base64,{b64}" download="informe.pdf">Descargar PDF</a>'
-    st.markdown(href, unsafe_allow_html=True)
-
-def export_word(df):
+def generar_word(df):
     doc = Document()
-    doc.add_heading('Informe de Datos Hidrometeorológicos', 0)
-    table = doc.add_table(rows=1, cols=len(df.columns))
-    hdr_cells = table.rows[0].cells
+    doc.add_heading('Informe de Datos Hidromet', 0)
+    t = doc.add_table(rows=1, cols=len(df.columns))
+    hdr_cells = t.rows[0].cells
     for i, col in enumerate(df.columns):
-        hdr_cells[i].text = col
-    for index, row in df.iterrows():
-        row_cells = table.add_row().cells
-        for i, item in enumerate(row):
-            row_cells[i].text = str(item)
-    word_output = BytesIO()
-    doc.save(word_output)
-    word_output.seek(0)
-    b64 = base64.b64encode(word_output.read()).decode()
-    href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="informe.docx">Descargar Word</a>'
-    st.markdown(href, unsafe_allow_html=True)
+        hdr_cells[i].text = str(col)
+    for i, row in df.iterrows():
+        row_cells = t.add_row().cells
+        for j, value in enumerate(row):
+            row_cells[j].text = str(value)
+    buffer = BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
 
-def admin_tools(df):
+# Panel de herramientas
+
+def admin_panel():
     st.title("Panel de Administración")
-    st.button("Cerrar sesión", on_click=logout)
-    st.markdown("---")
+    st.sidebar.button("Cerrar sesión", on_click=logout)
+    
+    uploaded_file = st.file_uploader("Sube tu archivo de datos (.csv)", type=["csv"])
 
-    st.subheader("1. Vista General de Datos")
-    st.dataframe(df)
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        st.success("Datos cargados correctamente")
 
-    st.subheader("2. Estadísticas Básicas")
-    st.write(df.describe())
+        st.subheader("Vista previa de datos")
+        st.dataframe(df.head())
 
-    st.subheader("3. Gráfico de Líneas")
-    st.line_chart(df.select_dtypes(include=np.number))
+        st.subheader("Herramientas disponibles")
+        herramientas = [
+            "Estadísticas generales", "Histograma", "Boxplot", "Tendencia temporal",
+            "Mapa de calor de correlaciones", "Gráficos de dispersión",
+            "Gráficos de línea interactivos", "Agrupación por categorías",
+            "Resumen por día/mes/año", "Filtrado avanzado de datos",
+            "Exportar a PDF", "Exportar a Word"
+        ]
 
-    st.subheader("4. Gráfico de Barras")
-    for column in df.select_dtypes(include=np.number).columns:
-        st.bar_chart(df[column])
+        for tool in herramientas:
+            st.markdown(f"### {tool}")
+            if tool == "Estadísticas generales":
+                st.write(df.describe())
+            elif tool == "Histograma":
+                col = st.selectbox("Selecciona una columna numérica", df.select_dtypes('number').columns, key="hist")
+                st.plotly_chart(px.histogram(df, x=col))
+            elif tool == "Boxplot":
+                col = st.selectbox("Columna para boxplot", df.select_dtypes('number').columns, key="box")
+                st.plotly_chart(px.box(df, y=col))
+            elif tool == "Tendencia temporal":
+                time_col = st.selectbox("Columna de fecha", df.columns, key="time")
+                value_col = st.selectbox("Valor a analizar", df.select_dtypes('number').columns, key="trend")
+                df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
+                df = df.dropna(subset=[time_col])
+                st.plotly_chart(px.line(df, x=time_col, y=value_col))
+            elif tool == "Mapa de calor de correlaciones":
+                corr = df.select_dtypes('number').corr()
+                st.plotly_chart(px.imshow(corr, text_auto=True))
+            elif tool == "Gráficos de dispersión":
+                x = st.selectbox("X", df.select_dtypes('number').columns, key="scatter_x")
+                y = st.selectbox("Y", df.select_dtypes('number').columns, key="scatter_y")
+                st.plotly_chart(px.scatter(df, x=x, y=y))
+            elif tool == "Gráficos de línea interactivos":
+                col = st.selectbox("Columna numérica", df.select_dtypes('number').columns, key="line")
+                st.plotly_chart(px.line(df[col]))
+            elif tool == "Agrupación por categorías":
+                group_col = st.selectbox("Columna de agrupación", df.columns, key="group")
+                agg_col = st.selectbox("Columna para agregar", df.select_dtypes('number').columns, key="agg")
+                st.bar_chart(df.groupby(group_col)[agg_col].mean())
+            elif tool == "Resumen por día/mes/año":
+                date_col = st.selectbox("Columna de fecha", df.columns, key="resumen")
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                df['Año'] = df[date_col].dt.year
+                st.write(df.groupby('Año').mean(numeric_only=True))
+            elif tool == "Filtrado avanzado de datos":
+                filtro = st.text_input("Expresión de filtro (ej. df['col'] > 50)")
+                try:
+                    filtered_df = df.query(filtro)
+                    st.dataframe(filtered_df)
+                except:
+                    st.warning("Expresión no válida")
+            elif tool == "Exportar a PDF":
+                pdf_data = generar_pdf(df)
+                b64 = base64.b64encode(pdf_data).decode()
+                href = f'<a href="data:application/pdf;base64,{b64}" download="informe.pdf">Descargar PDF</a>'
+                st.markdown(href, unsafe_allow_html=True)
+            elif tool == "Exportar a Word":
+                word_data = generar_word(df)
+                b64 = base64.b64encode(word_data).decode()
+                href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="informe.docx">Descargar Word</a>'
+                st.markdown(href, unsafe_allow_html=True)
 
-    st.subheader("5. Histograma")
-    for column in df.select_dtypes(include=np.number).columns:
-        fig = px.histogram(df, x=column, nbins=20)
-        st.plotly_chart(fig)
+    else:
+        st.warning("Por favor cargue un archivo para acceder a las herramientas")
 
-    st.subheader("6. Matriz de Correlación")
-    corr = df.select_dtypes(include=np.number).corr()
-    fig_corr = px.imshow(corr, text_auto=True, aspect="auto")
-    st.plotly_chart(fig_corr)
-
-    st.subheader("7. Exportar Datos")
-    export_pdf(df)
-    export_word(df)
-
-    st.subheader("8. Filtrado de Datos Avanzado")
-    column = st.selectbox("Columna para filtrar", df.columns)
-    value = st.text_input("Valor a filtrar")
-    if value:
-        st.write(df[df[column].astype(str).str.contains(value)])
-
-    st.subheader("9. Gráfico Personalizado")
-    x = st.selectbox("Eje X", df.select_dtypes(include=np.number).columns)
-    y = st.selectbox("Eje Y", df.select_dtypes(include=np.number).columns)
-    fig_custom = px.scatter(df, x=x, y=y)
-    st.plotly_chart(fig_custom)
-
-    st.subheader("10. Datos en Tiempo Real (Simulado)")
-    realtime_data = df.sample(5)
-    st.write(realtime_data)
-
-    st.subheader("11. Gráficos Avanzados")
-    for col in df.select_dtypes(include=np.number).columns[:2]:
-        fig = go.Figure()
-        fig.add_trace(go.Box(y=df[col], name=col))
-        st.plotly_chart(fig)
-
-    st.subheader("12. Información de la Fecha")
-    df['Fecha'] = pd.to_datetime(df.iloc[:,0], errors='coerce')
-    st.line_chart(df.set_index('Fecha').select_dtypes(include=np.number))
-
-    st.subheader("13. Mapa (si hay datos de ubicación)")
-    if 'lat' in df.columns and 'lon' in df.columns:
-        st.map(df[['lat', 'lon']])
-
-    st.subheader("14. Exportar a CSV")
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("Descargar CSV", csv, "informe.csv", "text/csv")
-
-    st.subheader("15. Información Técnica del Sistema")
-    st.code(str(df.info()))
-
-def main():
-    login()
-    if st.session_state.get("authenticated"):
-        uploaded_file = st.file_uploader("Sube tu archivo de datos (.csv)", type=["csv"])
-        if uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                admin_tools(df)
-            except Exception as e:
-                st.error(f"Ocurrió un error al cargar el archivo: {e}")
-        else:
-            st.warning("Por favor cargue un archivo para acceder a las herramientas")
-
-main()
+# Main
+if __name__ == '__main__':
+    if not st.session_state.authenticated:
+        login()
+    else:
+        admin_panel()
     
