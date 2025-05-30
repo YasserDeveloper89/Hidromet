@@ -34,7 +34,7 @@ def logout():
     st.rerun()
 
 # ----------------- Generar PDF -----------------
-def generar_pdf(df_to_export):
+def generar_pdf(df_actual):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -184,8 +184,6 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-    else:
-
 
     if st.button("Cerrar sesión"):
         logout()
@@ -205,3 +203,5 @@ def main():
         login()
 
 main()
+
+                                    
