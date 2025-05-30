@@ -1,122 +1,92 @@
+import streamlit as st import pandas as pd import base64 from io import BytesIO from docx import Document from fpdf import FPDF
 
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import folium
-from streamlit_folium import st_folium
-from io import BytesIO
-from docx import Document
-from fpdf import FPDF
+st.set_page_config(page_title="HydroClimaPro", layout="wide")
 
-st.set_page_config(page_title="HydroClima Pro", layout="wide")
+============================
 
-# --- Sidebar ---
-st.sidebar.image("assets/logo.png", width=150)
-st.sidebar.title("HydroClima Pro")
-st.sidebar.markdown("Gestión meteorológica e hidrológica")
+Estilos personalizados
 
-menu = st.sidebar.radio("Navegación", ["Carga de Datos", "Visualización", "Mapa", "Campañas", "Generar Informe"])
+============================
 
-# --- Funciones auxiliares ---
-def guardar_pdf(dataframe, filename="informe.pdf"):
+st.markdown(""" <style> .block-container { padding-top: 2rem; padding-bottom: 1rem; font-family: 'Segoe UI', sans-serif; color: #222; } h1, h2, h3, h4 { color: #0A3D62; } .stButton>button { background-color: #0A3D62; color: white; border-radius: 0.5rem; padding: 0.5rem 1rem; font-size: 1rem; } .stFileUploader label { font-weight: bold; } .report-section { background: #f4f6f8; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem; } </style> """, unsafe_allow_html=True)
+
+============================
+
+Encabezado
+
+============================
+
+st.title("🌧️ HydroClimaPro - Plataforma Avanzada de Reportes Hidrometeorológicos") st.markdown(""" Facilita la generación de reportes técnicos con importación, análisis y exportación de datos en formatos PDF y Word. """)
+
+============================
+
+Carga de datos
+
+============================
+
+st.subheader("📂 Importar archivos de medición") tab1, tab2 = st.tabs(["Excel / CSV", "Formato JSON"])
+
+data = None with tab1: uploaded_file = st.file_uploader("Sube tu archivo Excel o CSV", type=["csv", "xlsx"]) if uploaded_file: if uploaded_file.name.endswith(".csv"): data = pd.read_csv(uploaded_file) else: data = pd.read_excel(uploaded_file)
+
+with tab2: uploaded_json = st.file_uploader("Sube tu archivo JSON de sensores", type=["json"]) if uploaded_json: data = pd.read_json(uploaded_json)
+
+if data is not None: st.success("Archivo cargado correctamente ✅") st.dataframe(data, use_container_width=True, height=400)
+
+# ============================
+# Análisis básico
+# ============================
+st.subheader("📊 Análisis inicial de datos")
+st.markdown("""
+A continuación se muestra una descripción general de los datos cargados.
+""")
+st.dataframe(data.describe(), use_container_width=True)
+
+# ============================
+# Exportación a PDF y Word
+# ============================
+st.subheader("📄 Generar informes automáticos")
+report_title = st.text_input("Título del informe", "Informe Hidrometeorológico")
+
+if st.button("📤 Exportar informe en Word y PDF"):
+
+    # === WORD ===
+    doc = Document()
+    doc.add_heading(report_title, 0)
+    doc.add_paragraph("Descripción estadística de los datos cargados:")
+    desc_table = data.describe().reset_index()
+
+    table = doc.add_table(rows=1, cols=len(desc_table.columns))
+    hdr_cells = table.rows[0].cells
+    for i, col in enumerate(desc_table.columns):
+        hdr_cells[i].text = col
+    for _, row in desc_table.iterrows():
+        row_cells = table.add_row().cells
+        for i, val in enumerate(row):
+            row_cells[i].text = str(val)
+
+    word_stream = BytesIO()
+    doc.save(word_stream)
+    word_stream.seek(0)
+
+    # === PDF ===
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=10)
-    pdf.cell(200, 10, txt="Informe de Datos Hidrometeorológicos", ln=True, align='C')
-    pdf.ln(10)
-    for col in dataframe.columns:
-        pdf.cell(40, 8, col, 1)
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, txt=report_title, align='C')
     pdf.ln()
-    for i, row in dataframe.iterrows():
-        for val in row:
-            pdf.cell(40, 8, str(val)[:15], 1)
-        pdf.ln()
-    pdf.output(filename)
+    pdf.multi_cell(0, 10, txt="Resumen estadístico:")
 
-def guardar_word(dataframe, filename="informe.docx"):
-    doc = Document()
-    doc.add_heading('Informe de Datos Hidrometeorológicos', 0)
-    table = doc.add_table(rows=1, cols=len(dataframe.columns))
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(dataframe.columns):
-        hdr_cells[i].text = col
-    for index, row in dataframe.iterrows():
-        row_cells = table.add_row().cells
-        for i, value in enumerate(row):
-            row_cells[i].text = str(value)
-    doc.save(filename)
+    stats = data.describe().round(2)
+    for col in stats.columns:
+        pdf.cell(0, 10, f"{col}: {stats[col].to_dict()}", ln=1)
 
-# --- Módulo: Carga de Datos ---
-if menu == "Carga de Datos":
-    st.title("📥 Carga de Datos")
-    archivo = st.file_uploader("Sube tu archivo de datos (CSV, Excel, JSON)", type=["csv", "xlsx", "json"])
-    if archivo:
-        try:
-            if archivo.name.endswith(".csv"):
-                df = pd.read_csv(archivo)
-            elif archivo.name.endswith(".xlsx"):
-                df = pd.read_excel(archivo)
-            elif archivo.name.endswith(".json"):
-                df = pd.read_json(archivo)
-            st.session_state["datos"] = df
-            st.success("Datos cargados correctamente")
-            st.dataframe(df.head())
-        except Exception as e:
-            st.error(f"Error al cargar los datos: {e}")
+    pdf_stream = BytesIO()
+    pdf.output(pdf_stream)
+    pdf_stream.seek(0)
 
-# --- Módulo: Visualización ---
-elif menu == "Visualización":
-    st.title("📊 Visualización Interactiva")
-    if "datos" in st.session_state:
-        df = st.session_state["datos"]
-        col_x = st.selectbox("Selecciona variable X:", df.columns)
-        col_y = st.selectbox("Selecciona variable Y:", df.columns)
-        fig = px.scatter(df, x=col_x, y=col_y, title="Gráfico de Dispersión")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Primero debes cargar un archivo en la sección anterior.")
+    # === Descargas ===
+    st.download_button("📥 Descargar Word", word_stream, file_name="informe.docx")
+    st.download_button("📥 Descargar PDF", pdf_stream, file_name="informe.pdf")
 
-# --- Módulo: Mapa ---
-elif menu == "Mapa":
-    st.title("🗺️ Mapa de Estaciones")
-    if "datos" in st.session_state:
-        df = st.session_state["datos"]
-        if "lat" in df.columns and "lon" in df.columns:
-            m = folium.Map(location=[df["lat"].mean(), df["lon"].mean()], zoom_start=6)
-            for _, row in df.iterrows():
-                folium.Marker(location=[row["lat"], row["lon"]], popup=str(row)).add_to(m)
-            st_folium(m, use_container_width=True, height=500)
-        else:
-            st.error("Los datos deben tener columnas 'lat' y 'lon' para mostrar el mapa.")
-    else:
-        st.warning("Primero debes cargar un archivo en la sección anterior.")
+else: st.info("Por favor, carga un archivo para comenzar con el análisis y generación de reportes.")
 
-# --- Módulo: Campañas ---
-elif menu == "Campañas":
-    st.title("📁 Gestión de Campañas de Medición")
-    nombre = st.text_input("Nombre de campaña")
-    fecha = st.date_input("Fecha de inicio")
-    equipo = st.text_area("Equipo de trabajo")
-    st.write("Añade observaciones adicionales:")
-    obs = st.text_area("Observaciones")
-    if st.button("Guardar campaña"):
-        st.success(f"Campaña '{nombre}' guardada correctamente.")
-
-# --- Módulo: Informe ---
-elif menu == "Generar Informe":
-    st.title("📄 Generar Informe")
-    if "datos" in st.session_state:
-        df = st.session_state["datos"]
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("📤 Exportar PDF"):
-                guardar_pdf(df)
-                with open("informe.pdf", "rb") as f:
-                    st.download_button("Descargar PDF", data=f, file_name="informe.pdf")
-        with col2:
-            if st.button("📝 Exportar Word"):
-                guardar_word(df)
-                with open("informe.docx", "rb") as f:
-                    st.download_button("Descargar Word", data=f, file_name="informe.docx")
-    else:
-        st.warning("Primero debes cargar un archivo en la sección de carga de datos.")
