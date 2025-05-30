@@ -7,7 +7,7 @@ from io import BytesIO
 from fpdf import FPDF
 from docx import Document
 
-# ----------------- Autenticación -----------------
+# ----------------- AutenticaciÃ³n -----------------
 USUARIOS = {
     "admin": "admin123",
     "tecnico": "tecnico123"
@@ -15,17 +15,17 @@ USUARIOS = {
 
 # ----------------- Login -----------------
 def login():
-    st.title("🔐 Hydromet - Inicio de sesión")
+    st.title("ðŸ” Inicio de sesiÃ³n")
     usuario = st.text_input("Usuario")
-    contraseña = st.text_input("Contraseña", type="password")
-    if st.button("Iniciar sesión"):
-        if usuario in USUARIOS and USUARIOS[usuario] == contraseña:
+    contraseÃ±a = st.text_input("ContraseÃ±a", type="password")
+    if st.button("Iniciar sesiÃ³n"):
+        if usuario in USUARIOS and USUARIOS[usuario] == contraseÃ±a:
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
-            st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
+            st.success(f"âœ… Login exitoso. Bienvenido, {usuario}")
             st.rerun()
         else:
-            st.error("❌ Usuario o contraseña incorrectos")
+            st.error("âŒ Usuario o contraseÃ±a incorrectos")
 
 # ----------------- Logout -----------------
 def logout():
@@ -41,58 +41,104 @@ def generar_pdf(df_to_export):
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
 
-    col_width = pdf.w / (len(df_to_export.columns) + 1)
+    # AÃ±adir los encabezados de las columnas
+    # Calcular el ancho de la columna dinÃ¡micamente para el Ã­ndice y las columnas de datos
+    num_cols = len(df_to_export.columns)
+    # Si el Ã­ndice tiene nombre o se va a mostrar, cuenta como una columna mÃ¡s
+    if df_to_export.index.name or not df_to_export.index.is_unique or isinstance(df_to_export.index, pd.RangeIndex):
+        num_cols += 1 
     
-    # Manejo del índice como primera columna si es significativo
-    if isinstance(df_to_export.index, pd.DatetimeIndex) or df_to_export.index.name:
-        headers = [str(df_to_export.index.name) if df_to_export.index.name else "Índice"] + df_to_export.columns.tolist()
+    col_width = pdf.w / num_cols 
+    
+    # AÃ±adir el encabezado del Ã­ndice
+    if df_to_export.index.name:
+        pdf.cell(col_width, 10, str(df_to_export.index.name), border=1)
     else:
-        headers = df_to_export.columns.tolist()
+        # Si el Ã­ndice no tiene nombre y no es un RangeIndex (por defecto 0, 1, 2...), darle un nombre genÃ©rico
+        if not isinstance(df_to_export.index, pd.RangeIndex):
+            pdf.cell(col_width, 10, "Ãndice", border=1)
+        else:
+            # Si es un RangeIndex, no imprimimos "Ãndice" a menos que haya un nombre explÃ­cito
+            # O ajustamos el num_cols para que no considere el Ã­ndice si es default
+            num_cols -= 1 # Reajustar si el Ã­ndice es un RangeIndex y no se mostrarÃ¡ explÃ­citamente como "Ãndice"
+            col_width = pdf.w / num_cols # Recalcular el ancho de la columna
+            # No imprimir la celda del Ã­ndice para RangeIndex sin nombre
+            pass
 
-    for col in headers:
+
+    for col in df_to_export.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
+    # AÃ±adir los datos
     for index, row in df_to_export.iterrows():
-        if isinstance(index, pd.Timestamp):
-            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d %H:%M:%S')), border=1)
-        elif isinstance(df_to_export.index, pd.Int64Index) and df_to_export.index.name is None:
-            pass 
-        else:
-            pdf.cell(col_width, 10, str(index), border=1)
-
+        # Manejar el Ã­ndice, especialmente si es un Timestamp
+        if df_to_export.index.name or not isinstance(df_to_export.index, pd.RangeIndex):
+            if isinstance(index, pd.Timestamp):
+                pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
+            else:
+                pdf.cell(col_width, 10, str(index), border=1)
+        
+        # AÃ±adir los valores de las filas
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
 
     buffer = BytesIO()
-    pdf.output(buffer, 'F') # 'F' significa "File"
-    buffer.seek(0) # Mueve el cursor al inicio del buffer
-    pdf_data = buffer.getvalue()
-    return pdf_data
+    # **AQUÃ ESTÃ LA MODIFICACIÃ“N CLAVE: .encode('latin-1')**
+    pdf_data = pdf.output(dest='S').encode('latin-1') 
+    buffer.write(pdf_data)
+    buffer.seek(0) # Retroceder al inicio del buffer antes de devolverlo
+    
+    return buffer.getvalue()
 
 # ----------------- Generar Word -----------------
 def generar_word(df_to_export):
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
-    table = doc.add_table(rows=1, cols=len(df_to_export.columns))
+    
+    # AsegÃºrate de incluir el nombre del Ã­ndice si existe, o una columna de "Ãndice"
+    columns_for_word = []
+    # AÃ±adir el encabezado del Ã­ndice si es relevante
+    if df_to_export.index.name:
+        columns_for_word.append(df_to_export.index.name)
+    elif not isinstance(df_to_export.index, pd.RangeIndex):
+        columns_for_word.append("Ãndice")
+    
+    columns_for_word.extend(df_to_export.columns.tolist())
+
+    table = doc.add_table(rows=1, cols=len(columns_for_word))
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df_to_export.columns):
-        hdr_cells[i].text = col
+    for i, col_name in enumerate(columns_for_word):
+        hdr_cells[i].text = col_name
+    
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        for i, col_name in enumerate(df_to_export.columns):
-            row_cells[i].text = str(row[col_name])
+        cell_idx = 0
+
+        # AÃ±adir el Ã­ndice si es relevante
+        if df_to_export.index.name or not isinstance(df_to_export.index, pd.RangeIndex):
+            if isinstance(index, pd.Timestamp):
+                row_cells[cell_idx].text = str(index.strftime('%Y-%m-%d'))
+            else:
+                row_cells[cell_idx].text = str(index)
+            cell_idx += 1
+
+        # AÃ±adir los valores de las columnas del DataFrame
+        for col_name in df_to_export.columns:
+            row_cells[cell_idx].text = str(row[col_name])
+            cell_idx += 1
+            
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
 
-# ----------------- Panel de Administración -----------------
+# ----------------- Panel de AdministraciÃ³n -----------------
 def admin_panel():
-    st.title("🛠️ Panel de Administración")
+    st.title("ðŸ› ï¸ Panel de AdministraciÃ³n")
     st.write(f"Bienvenido, {st.session_state.usuario}")
 
-    st.subheader("📁 Cargar Datos (CSV)")
+    st.subheader("ðŸ“ Cargar Datos (CSV)")
     uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
 
     if uploaded_file is None:
@@ -107,16 +153,16 @@ def admin_panel():
                 try:
                     df['fecha'] = pd.to_datetime(df['fecha'])
                     df.set_index('fecha', inplace=True)
-                    st.info("Columna 'fecha' detectada y establecida como índice de tiempo.")
+                    st.info("Columna 'fecha' detectada y establecida como Ã­ndice de tiempo.")
                 except Exception as e:
                     st.warning(f"No se pudo convertir la columna 'fecha' a formato de fecha/hora: {e}")
-            elif st.checkbox("¿Tu archivo tiene una columna de fecha/hora para el índice?"):
+            elif st.checkbox("Â¿Tu archivo tiene una columna de fecha/hora para el Ã­ndice?"):
                 date_column = st.selectbox("Selecciona la columna de fecha/hora:", df.columns)
                 if date_column:
                     try:
                         df[date_column] = pd.to_datetime(df[date_column])
                         df.set_index(date_column, inplace=True)
-                        st.info(f"Columna '{date_column}' detectada y establecida como índice de tiempo.")
+                        st.info(f"Columna '{date_column}' detectada y establecida como Ã­ndice de tiempo.")
                     except Exception as e:
                         st.error(f"Error al convertir la columna '{date_column}' a formato de fecha/hora: {e}")
             
@@ -127,7 +173,7 @@ def admin_panel():
 
         except Exception as e:
             st.error(f"Error al leer el archivo CSV: {e}")
-            st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
+            st.info("AsegÃºrate de que el archivo es un CSV vÃ¡lido y no estÃ¡ daÃ±ado.")
             st.session_state.df_cargado = None
     
     df_actual = st.session_state.df_cargado
@@ -136,17 +182,17 @@ def admin_panel():
         numeric_df = df_actual.select_dtypes(include=['number'])
 
         if not numeric_df.empty:
-            st.subheader("📈 Visualización de Datos (Series de Tiempo si hay índice de fecha)")
+            st.subheader("ðŸ“ˆ VisualizaciÃ³n de Datos (Series de Tiempo si hay Ã­ndice de fecha)")
             st.line_chart(df_actual)
 
-            st.subheader("📊 Gráfico de Correlación")
+            st.subheader("ðŸ“Š GrÃ¡fico de CorrelaciÃ³n")
             try:
-                fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
+                fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de CorrelaciÃ³n")
                 st.plotly_chart(fig)
             except Exception as e:
-                st.warning(f"No se pudo generar el gráfico de correlación. Asegúrate de tener al menos dos columnas numéricas. Error: {e}")
+                st.warning(f"No se pudo generar el grÃ¡fico de correlaciÃ³n. AsegÃºrate de tener al menos dos columnas numÃ©ricas. Error: {e}")
 
-            st.subheader("Exploración de Gráficos (Dinámico)")
+            st.subheader("ExploraciÃ³n de GrÃ¡ficos (DinÃ¡mico)")
             columnas_numericas = df_actual.select_dtypes(include=['number']).columns.tolist()
             
             if len(columnas_numericas) >= 2:
@@ -157,49 +203,51 @@ def admin_panel():
                     y_axis = st.selectbox("Selecciona eje Y (Scatter Plot):", options=columnas_numericas, key="scatter_y")
                 if x_axis and y_axis:
                     try:
-                        fig_scatter = px.scatter(df_actual, x=x_axis, y=y_axis, title=f"Dispersión de {x_axis} vs {y_axis}")
+                        fig_scatter = px.scatter(df_actual, x=x_axis, y=y_axis, title=f"DispersiÃ³n de {x_axis} vs {y_axis}")
                         st.plotly_chart(fig_scatter)
                     except Exception as e:
-                        st.warning(f"No se pudo generar el gráfico de dispersión: {e}")
+                        st.warning(f"No se pudo generar el grÃ¡fico de dispersiÃ³n: {e}")
             else:
-                st.info("Necesitas al menos dos columnas numéricas para el gráfico de dispersión.")
+                st.info("Necesitas al menos dos columnas numÃ©ricas para el grÃ¡fico de dispersiÃ³n.")
 
             if columnas_numericas:
                 hist_column = st.selectbox("Selecciona columna para Histograma:", options=columnas_numericas, key="hist_col")
                 if hist_column:
                     try:
-                        fig_hist = px.histogram(df_actual, x=hist_column, marginal="rug", title=f"Distribución de {hist_column}")
+                        fig_hist = px.histogram(df_actual, x=hist_column, marginal="rug", title=f"DistribuciÃ³n de {hist_column}")
                         st.plotly_chart(fig_hist)
                     except Exception as e:
                         st.warning(f"No se pudo generar el histograma: {e}")
             else:
-                st.info("No hay columnas numéricas para generar histogramas.")
+                st.info("No hay columnas numÃ©ricas para generar histogramas.")
 
         else:
-            st.warning("El DataFrame cargado no contiene columnas numéricas para generar gráficos.")
+            st.warning("El DataFrame cargado no contiene columnas numÃ©ricas para generar grÃ¡ficos.")
 
-        st.subheader("📤 Exportar Datos")
+        st.subheader("ðŸ“¤ Exportar Datos")
+        
+        # Generar los datos para la descarga solo si df_actual no estÃ¡ vacÃ­o
         pdf_data = generar_pdf(df_actual)
         word_data = generar_word(df_actual)
 
         st.download_button(
-            label="📄 Descargar PDF",
+            label="ðŸ“„ Descargar PDF",
             data=pdf_data,
             file_name="reporte.pdf",
             mime="application/pdf"
         )
 
         st.download_button(
-            label="📝 Descargar Word",
+            label="ðŸ“ Descargar Word",
             data=word_data,
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
 
-    if st.button("Cerrar sesión"):
+    if st.button("Cerrar sesiÃ³n"):
         logout()
 
-# ----------------- Inicialización -----------------
+# ----------------- InicializaciÃ³n -----------------
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.usuario = ""
@@ -214,4 +262,4 @@ def main():
         login()
 
 main()
-    
+            
