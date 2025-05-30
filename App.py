@@ -78,7 +78,7 @@ def generar_word(df_to_export): # Aquí se recibe df_to_export
 
 # ----------------- Panel de Administración -----------------
 def admin_panel():
-    st.title("Sistema de gestión Hidrimeteorológica")
+    st.title("🛠️ Panel de Administración")
     st.write(f"Bienvenido, {st.session_state.usuario}")
 
     st.subheader("📁 Cargar Datos (CSV)")
