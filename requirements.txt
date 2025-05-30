@@ -6,3 +6,4 @@ streamlit-folium
 fpdf
 python-docx
 matplotlib
+seaborn
