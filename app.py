@@ -10,14 +10,14 @@ from datetime import datetime
 # --- Configuración de la página ---
 st.set_page_config(page_title="HydroClima PRO", layout="wide")
 
-# --- Datos de usuarios ---
+# --- Usuarios permitidos ---
 USERS = {
     "admin": {"password": "admin123", "role": "Administrador"},
     "tecnico": {"password": "tecnico123", "role": "Técnico"},
     "observador": {"password": "observador123", "role": "Observador"}
 }
 
-# --- Inicializar sesión ---
+# --- Inicializar variables de sesión ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
@@ -59,12 +59,11 @@ def export_word(df):
     except Exception as e:
         st.error(f"Error al generar Word: {e}")
 
-# --- Dashboard por rol ---
+# --- Panel de Administración ---
 def admin_panel(df):
-    st.title("Panel de Administración")
-    st.success("Acceso total garantizado ✅")
-    st.subheader("📈 Gráficos interactivos")
+    st.title("👑 Panel de Administración")
     if df is not None:
+        st.subheader("📈 Gráficos interactivos")
         for col in df.select_dtypes(include=np.number).columns:
             fig = px.line(df, y=col, title=f"Evolución de {col}", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
@@ -74,33 +73,34 @@ def admin_panel(df):
         export_word(df)
 
         st.subheader("🛠️ Herramientas avanzadas")
-        st.write("- Conexión a dispositivos de medición (simulada)")
-        st.write("- Control de accesos")
-        st.write("- Gestión de logs de uso")
+        st.markdown("- Conexión a sensores de medición (modo simulado)")
+        st.markdown("- Control de usuarios y roles")
+        st.markdown("- Visualización completa del sistema")
     else:
-        st.warning("Carga un archivo primero para acceder a todas las funciones.")
+        st.warning("Carga un archivo primero para acceder a las herramientas.")
 
+# --- Panel Técnico ---
 def tecnico_panel(df):
-    st.title("Panel Técnico")
-    st.subheader("📊 Visualización de datos")
+    st.title("🧪 Panel Técnico")
     if df is not None:
         st.dataframe(df.head())
-        selected_col = st.selectbox("Selecciona columna numérica para graficar", df.select_dtypes(include=np.number).columns)
+        selected_col = st.selectbox("Selecciona una columna para graficar", df.select_dtypes(include=np.number).columns)
         st.plotly_chart(px.line(df, y=selected_col, title=f"Gráfico de {selected_col}", template="plotly_dark"), use_container_width=True)
         export_pdf(df)
     else:
         st.warning("Por favor, carga un archivo CSV.")
 
+# --- Panel Observador ---
 def observador_panel(df):
-    st.title("Panel de Observación")
+    st.title("👀 Panel de Observador")
     if df is not None:
         st.dataframe(df.head(10))
     else:
-        st.warning("Carga un archivo para visualizar.")
+        st.warning("Carga un archivo para visualizar datos.")
 
-# --- Login ---
-def login():
-    st.title("🔐 Iniciar sesión")
+# --- Login UI ---
+def login_ui():
+    st.title("🔐 Inicio de Sesión")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
     if st.button("Iniciar sesión"):
@@ -108,39 +108,36 @@ def login():
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.role = USERS[username]["role"]
-            st.success(f"Bienvenido, {username} ({st.session_state.role})")
-            st.experimental_rerun()
         else:
-            st.error("Credenciales inválidas")
+            st.error("❌ Usuario o contraseña incorrectos")
 
-# --- Logout ---
+# --- Cierre de sesión ---
 def logout():
-    st.sidebar.markdown("---")
-    if st.sidebar.button("Cerrar sesión"):
+    if st.sidebar.button("🔒 Cerrar sesión"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
-        st.experimental_rerun()
 
-# --- Carga de archivo CSV ---
-def cargar_archivo():
+# --- Cargar archivo ---
+def cargar_csv():
     st.sidebar.subheader("📁 Cargar archivo CSV")
-    archivo = st.sidebar.file_uploader("Selecciona un archivo", type=["csv"])
+    archivo = st.sidebar.file_uploader("Selecciona archivo", type=["csv"])
     if archivo:
-        df = pd.read_csv(archivo)
-        return df
+        return pd.read_csv(archivo)
     return None
 
-# --- Ejecución principal ---
+# --- Lógica principal ---
 if not st.session_state.logged_in:
-    login()
+    login_ui()
 else:
+    st.sidebar.write(f"👤 Usuario: {st.session_state.username}")
+    st.sidebar.write(f"🔑 Rol: {st.session_state.role}")
     logout()
-    df = cargar_archivo()
-    role = st.session_state.role
-    if role == "Administrador":
+    df = cargar_csv()
+    rol = st.session_state.role
+    if rol == "Administrador":
         admin_panel(df)
-    elif role == "Técnico":
+    elif rol == "Técnico":
         tecnico_panel(df)
-    elif role == "Observador":
+    elif rol == "Observador":
         observador_panel(df)
