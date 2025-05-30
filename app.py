@@ -8,121 +8,121 @@ from docx import Document
 from fpdf import FPDF
 from datetime import datetime
 
-# ---------------- CONFIG ------------------
-st.set_page_config(page_title="Panel Administrador HidroMet", layout="wide")
+# -------------------- Autenticación -------------------- #
+USERS = {
+    "admin": {"password": "admin123", "role": "admin"},
+    "tecnico": {"password": "tecnico123", "role": "tecnico"},
+    "cliente": {"password": "cliente123", "role": "cliente"}
+}
 
-# ---------------- SESSION STATE ------------------
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-    st.session_state.username = ''
+# Inicializar estado de sesión
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "role" not in st.session_state:
+    st.session_state.role = ""
 
-# ----------------- LOGIN -------------------
+# -------------------- Funciones auxiliares -------------------- #
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.session_state.role = ""
+    st.experimental_rerun()
+
 def login():
-    st.title("🔐 Iniciar sesión")
+    st.title("Inicio de sesión")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
-    login_btn = st.button("Entrar")
-
-    if login_btn:
-        if username == "admin" and password == "admin123":
-            st.session_state.authenticated = True
+    if st.button("Iniciar sesión"):
+        if username in USERS and USERS[username]["password"] == password:
+            st.session_state.logged_in = True
             st.session_state.username = username
+            st.session_state.role = USERS[username]["role"]
             st.success(f"Login exitoso. Bienvenido, {username}")
+            st.experimental_rerun()
         else:
-            st.error("❌ Credenciales inválidas")
+            st.error("Credenciales inválidas")
 
-# ----------------- LOGOUT -------------------
-def logout():
-    st.session_state.authenticated = False
-    st.session_state.username = ''
-    st.rerun()
-
-# ----------------- PDF EXPORT -------------------
+# -------------------- Exportar a PDF -------------------- #
 def export_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos HidroMet", ln=True, align="C")
-    pdf.ln(10)
-
+    pdf.cell(200, 10, txt="Informe de Datos", ln=True, align='C')
     for i in range(len(df)):
         row = ', '.join([str(x) for x in df.iloc[i]])
-        pdf.multi_cell(0, 10, txt=row)
-
+        pdf.cell(200, 10, txt=row, ln=True)
     pdf_output = BytesIO()
     pdf.output(pdf_output)
     pdf_output.seek(0)
     return pdf_output
 
-# ----------------- WORD EXPORT -------------------
+# -------------------- Exportar a Word -------------------- #
 def export_word(df):
     doc = Document()
-    doc.add_heading('Informe de Datos HidroMet', 0)
-
+    doc.add_heading('Informe de Datos', 0)
     table = doc.add_table(rows=1, cols=len(df.columns))
     hdr_cells = table.rows[0].cells
     for i, column in enumerate(df.columns):
         hdr_cells[i].text = str(column)
-
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
         row_cells = table.add_row().cells
-        for i, value in enumerate(row):
-            row_cells[i].text = str(value)
-
+        for i, val in enumerate(row):
+            row_cells[i].text = str(val)
     word_output = BytesIO()
     doc.save(word_output)
     word_output.seek(0)
     return word_output
 
-# ----------------- ADMIN TOOLS -------------------
-def admin_tools(df):
-    st.sidebar.title("🛠 Herramientas de Administración")
+# -------------------- Panel de administrador -------------------- #
+def admin_panel():
+    st.title("Panel de Administración")
+    st.write(f"Bienvenido, {st.session_state.username}")
+    uploaded_file = st.file_uploader("Cargar archivo CSV", type="csv")
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.subheader("Vista Previa de los Datos")
+            st.dataframe(df)
 
-    st.subheader("📊 Vista General de Datos")
-    st.dataframe(df)
+            st.subheader("📊 Estadísticas básicas")
+            st.write(df.describe())
 
-    st.subheader("📈 Gráficos Interactivos")
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        st.plotly_chart(px.line(df, y=col, title=f"{col}"))
+            st.subheader("📈 Gráficos Interactivos")
+            numeric_cols = df.select_dtypes(include=np.number).columns
+            if len(numeric_cols) > 1:
+                st.plotly_chart(px.line(df[numeric_cols]))
+                st.plotly_chart(px.box(df[numeric_cols]))
+            else:
+                st.warning("No hay suficientes columnas numéricas para graficar.")
 
-    st.subheader("🌐 Mapa de Sensores")
-    if {'lat', 'lon'}.issubset(df.columns):
-        st.map(df[['lat', 'lon']])
+            st.subheader("📄 Exportar Informes")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.download_button("Descargar PDF", export_pdf(df), file_name="informe.pdf"):
+                    st.success("PDF generado correctamente")
+            with col2:
+                if st.download_button("Descargar Word", export_word(df), file_name="informe.docx"):
+                    st.success("Documento Word generado correctamente")
 
-    st.subheader("📌 Correlación entre Variables")
-    corr = df[numeric_cols].corr()
-    fig_corr = px.imshow(corr, text_auto=True, aspect="auto")
-    st.plotly_chart(fig_corr)
-
-    st.subheader("📤 Exportar Informes")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.download_button("📥 Descargar en PDF", data=export_pdf(df), file_name="informe.pdf"):
-            st.success("PDF generado")
-    with col2:
-        if st.download_button("📥 Descargar en Word", data=export_word(df), file_name="informe.docx"):
-            st.success("Word generado")
-
-# ---------------- MAIN -------------------
-def main():
-    if not st.session_state.authenticated:
-        login()
-        return
-
-    st.sidebar.title(f"👋 Bienvenido, {st.session_state.username}")
-    if st.sidebar.button("Cerrar sesión"):
-        logout()
-
-    st.title("📡 Panel de Control Administrador - HidroMet")
-
-    uploaded_file = st.file_uploader("Cargar archivo CSV de sensores", type=["csv"])
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        admin_tools(df)
+        except Exception as e:
+            st.error(f"Ocurrió un error al procesar el archivo: {e}")
     else:
-        st.warning("Por favor cargue un archivo para acceder a las herramientas.")
+        st.warning("Por favor cargue un archivo para acceder a las herramientas")
 
-# ---------------- RUN -------------------
-main()
-                         
+# -------------------- Main -------------------- #
+def main():
+    if not st.session_state.logged_in:
+        login()
+    else:
+        if st.button("Cerrar sesión"):
+            logout()
+        if st.session_state.role == "admin":
+            admin_panel()
+        else:
+            st.error("Acceso denegado. Solo los administradores pueden acceder a esta sección.")
+
+if __name__ == "__main__":
+    main()
+            
