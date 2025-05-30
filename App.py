@@ -6,7 +6,6 @@ import base64
 from io import BytesIO
 from fpdf import FPDF
 from docx import Document
-from datetime import datetime # Added for the new temperature feature
 
 # ----------------- Autenticación -----------------
 USUARIOS = {
@@ -42,24 +41,18 @@ def generar_pdf(df_to_export):
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
 
-    # Calculate column widths to fit the page
-    # A more robust solution might dynamically adjust based on content length
-    col_width = pdf.w / (len(df_to_export.columns) + 1) # +1 if you want to include index as a column
-    # Let's make it simpler for now and assume it fits, or you can calculate exact widths
-    # For now, a fixed width per column, assuming reasonable number of columns
-    effective_col_width = (pdf.w - 2 * pdf.l_margin) / len(df_to_export.columns)
-
-    # Add header row
+    col_width = pdf.w / (len(df_to_export.columns) + 1)
     for col in df_to_export.columns:
-        pdf.cell(effective_col_width, 10, str(col), border=1)
+        pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
-    # Add data rows
     for index, row in df_to_export.iterrows():
-        # If the DataFrame index represents data you want in the PDF, you'd add it here.
-        # Otherwise, just iterate through row items.
+        if isinstance(index, pd.Timestamp):
+            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
+        else:
+            pdf.cell(col_width, 10, str(index), border=1)
         for item in row:
-            pdf.cell(effective_col_width, 10, str(item), border=1)
+            pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
 
     buffer = BytesIO()
@@ -68,16 +61,16 @@ def generar_pdf(df_to_export):
     return pdf_data
 
 # ----------------- Generar Word -----------------
-def generar_word(df_to_export):
+def generar_word(df_to_export): # Aquí se recibe df_to_export
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
     table = doc.add_table(rows=1, cols=len(df_to_export.columns))
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df_to_export.columns):
+    for i, col in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns
         hdr_cells[i].text = col
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        for i, col_name in enumerate(df_to_export.columns):
+        for i, col_name in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns y col_name
             row_cells[i].text = str(row[col_name])
     buffer = BytesIO()
     doc.save(buffer)
@@ -88,16 +81,13 @@ def admin_panel():
     st.title("🛠️ Panel de Administración")
     st.write(f"Bienvenido, {st.session_state.usuario}")
 
-    # --- CSV Upload Section (Original structure preserved) ---
     st.subheader("📁 Cargar Datos (CSV)")
     uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
 
     if uploaded_file is None:
         st.session_state.df_cargado = None
-        # This is the line that will remain when NO file is uploaded yet,
-        # but the duplicate when a file IS uploaded will be removed.
-        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación aquí.")
-    else: # This block runs when a file IS uploaded
+
+    if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
             st.success("Archivo CSV cargado exitosamente.")
@@ -131,8 +121,6 @@ def admin_panel():
     
     df_actual = st.session_state.df_cargado
 
-    # This block now runs ONLY if df_actual is not None AND not empty
-    # This ensures all original tools appear AFTER a CSV is successfully loaded.
     if df_actual is not None and not df_actual.empty:
         numeric_df = df_actual.select_dtypes(include=['number'])
 
@@ -196,58 +184,9 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-    # The redundant "Sube un archivo CSV..." line is now removed from here,
-    # as it's handled by the `uploaded_file is None` block above.
-
-    ---
-
-    # --- Nueva Herramienta: Visualización de Temperatura y Fecha (Always Visible) ---
-    st.subheader("🌡️ Visualización de Datos de Temperatura y Ambiente")
-    st.write("Aquí puedes monitorear de manera clara e intuitiva datos ambientales clave como la temperatura y la fecha.")
-
-    # Simulated data for demonstration
-    # In a real application, this would come from sensors or a database
-    temp_data = {
-        "Fecha": [datetime(2025, 5, 29, 10, 0), datetime(2025, 5, 29, 11, 0), datetime(2025, 5, 29, 12, 0), datetime(2025, 5, 29, 13, 0), datetime(2025, 5, 29, 14, 0), datetime(2025, 5, 29, 15, 0)],
-        "Temperatura (°C)": [22.5, 23.1, 24.0, 23.8, 22.9, 23.5],
-        "Humedad (%)": [60, 58, 55, 57, 61, 62],
-        "Presión (hPa)": [1012, 1011, 1010, 1010, 1011, 1012]
-    }
-    temp_df = pd.DataFrame(temp_data)
-    temp_df['Fecha'] = pd.to_datetime(temp_df['Fecha']) # Ensure 'Fecha' is datetime
-
-    if not temp_df.empty:
-        col_temp1, col_temp2, col_temp3 = st.columns(3)
-        
-        with col_temp1:
-            latest_temp = temp_df["Temperatura (°C)"].iloc[-1]
-            # You could add a delta calculation if you had previous data points
-            st.metric(label="Temperatura Actual", value=f"{latest_temp}°C", delta="0.5°C") # Example delta
-        
-        with col_temp2:
-            latest_humidity = temp_df["Humedad (%)"].iloc[-1]
-            st.metric(label="Humedad Actual", value=f"{latest_humidity}%", delta="-2%") # Example delta
-        
-        with col_temp3:
-            latest_date_time = temp_df["Fecha"].iloc[-1].strftime("%Y-%m-%d %H:%M:%S")
-            st.metric(label="Última Actualización", value=latest_date_time)
-
-        st.write("#### Tendencia de Temperatura a lo largo del tiempo")
-        fig_temp_trend = px.line(temp_df, x="Fecha", y="Temperatura (°C)", title="Histórico de Temperatura")
-        st.plotly_chart(fig_temp_trend, use_container_width=True)
-
-        st.write("#### Datos Ambientales Detallados")
-        st.dataframe(temp_df) # Display the full DataFrame for more details
     else:
-        st.info("No hay datos ambientales disponibles para mostrar en este momento.")
+        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación aquí.")
 
-    ---
-
-    # --- Otras herramientas de administración (ejemplo) ---
-    st.subheader("👥 Gestión de Usuarios (Próximamente)")
-    st.info("Esta sección estará disponible en futuras actualizaciones para gestionar usuarios y permisos.")
-
-    ---
 
     if st.button("Cerrar sesión"):
         logout()
@@ -267,4 +206,4 @@ def main():
         login()
 
 main()
-    
+                 
