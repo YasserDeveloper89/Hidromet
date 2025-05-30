@@ -409,5 +409,4 @@ def admin_panel():
 
     with tab_exportacion:
         st.header("Generar y Exportar Reportes")
-        # CORREGIDO: Línea 412
-        st.info("Aquí puedes d
+        st.info("Aquí puedes generar y descargar tus reportes
