@@ -1,92 +1,127 @@
-import streamlit as st import pandas as pd import base64 from io import BytesIO from docx import Document from fpdf import FPDF
+import streamlit as st
+import pandas as pd
+import base64
+from io import BytesIO
+from docx import Document
+from fpdf import FPDF
+import os
 
-st.set_page_config(page_title="HydroClimaPro", layout="wide")
+# Configuración general
+st.set_page_config(page_title="HidroClimaPro", layout="wide")
 
-============================
-
-Estilos personalizados
-
-============================
-
-st.markdown(""" <style> .block-container { padding-top: 2rem; padding-bottom: 1rem; font-family: 'Segoe UI', sans-serif; color: #222; } h1, h2, h3, h4 { color: #0A3D62; } .stButton>button { background-color: #0A3D62; color: white; border-radius: 0.5rem; padding: 0.5rem 1rem; font-size: 1rem; } .stFileUploader label { font-weight: bold; } .report-section { background: #f4f6f8; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem; } </style> """, unsafe_allow_html=True)
-
-============================
-
-Encabezado
-
-============================
-
-st.title("🌧️ HydroClimaPro - Plataforma Avanzada de Reportes Hidrometeorológicos") st.markdown(""" Facilita la generación de reportes técnicos con importación, análisis y exportación de datos en formatos PDF y Word. """)
-
-============================
-
-Carga de datos
-
-============================
-
-st.subheader("📂 Importar archivos de medición") tab1, tab2 = st.tabs(["Excel / CSV", "Formato JSON"])
-
-data = None with tab1: uploaded_file = st.file_uploader("Sube tu archivo Excel o CSV", type=["csv", "xlsx"]) if uploaded_file: if uploaded_file.name.endswith(".csv"): data = pd.read_csv(uploaded_file) else: data = pd.read_excel(uploaded_file)
-
-with tab2: uploaded_json = st.file_uploader("Sube tu archivo JSON de sensores", type=["json"]) if uploaded_json: data = pd.read_json(uploaded_json)
-
-if data is not None: st.success("Archivo cargado correctamente ✅") st.dataframe(data, use_container_width=True, height=400)
-
-# ============================
-# Análisis básico
-# ============================
-st.subheader("📊 Análisis inicial de datos")
+# Estilos modernos
 st.markdown("""
-A continuación se muestra una descripción general de los datos cargados.
-""")
-st.dataframe(data.describe(), use_container_width=True)
+    <style>
+        html, body, [class*="css"]  {
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .reportview-container {
+            padding: 1.5rem 2rem 2rem 2rem;
+        }
+        h1, h2, h3 {
+            color: #003366;
+        }
+        .stButton>button {
+            background-color: #004488;
+            color: white;
+            border-radius: 8px;
+            padding: 0.5em 1em;
+        }
+        .stFileUploader label {
+            font-weight: bold;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# ============================
-# Exportación a PDF y Word
-# ============================
-st.subheader("📄 Generar informes automáticos")
-report_title = st.text_input("Título del informe", "Informe Hidrometeorológico")
+st.title("🌎 HidroClimaPro - Plataforma de Reportes Hidrometeorológicos")
+st.markdown("Aplicación avanzada para análisis, carga de datos y generación de reportes en PDF y Word sobre variables hidrológicas y meteorológicas.")
 
-if st.button("📤 Exportar informe en Word y PDF"):
+# --- SUBIDA DE ARCHIVO ---
+st.header("📁 Carga de Datos")
+archivo = st.file_uploader("Carga tu archivo de datos (.csv, .xlsx, .json):", type=["csv", "xlsx", "json"])
 
-    # === WORD ===
-    doc = Document()
-    doc.add_heading(report_title, 0)
-    doc.add_paragraph("Descripción estadística de los datos cargados:")
-    desc_table = data.describe().reset_index()
+if archivo:
+    nombre = archivo.name
 
-    table = doc.add_table(rows=1, cols=len(desc_table.columns))
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(desc_table.columns):
-        hdr_cells[i].text = col
-    for _, row in desc_table.iterrows():
-        row_cells = table.add_row().cells
-        for i, val in enumerate(row):
-            row_cells[i].text = str(val)
+    try:
+        if nombre.endswith(".csv"):
+            df = pd.read_csv(archivo)
+        elif nombre.endswith(".xlsx"):
+            df = pd.read_excel(archivo)
+        elif nombre.endswith(".json"):
+            df = pd.read_json(archivo)
+        else:
+            st.error("Formato no soportado.")
+            st.stop()
 
-    word_stream = BytesIO()
-    doc.save(word_stream)
-    word_stream.seek(0)
+        st.success("✅ Archivo cargado correctamente")
+        st.subheader("📊 Vista previa de los datos")
+        st.dataframe(df, use_container_width=True)
 
-    # === PDF ===
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, txt=report_title, align='C')
-    pdf.ln()
-    pdf.multi_cell(0, 10, txt="Resumen estadístico:")
+        # Variables disponibles
+        columnas = df.columns.tolist()
+        st.markdown("#### Selecciona columnas para el reporte:")
+        seleccionadas = st.multiselect("Columnas:", columnas, default=columnas[:3])
 
-    stats = data.describe().round(2)
-    for col in stats.columns:
-        pdf.cell(0, 10, f"{col}: {stats[col].to_dict()}", ln=1)
+        df_filtrado = df[seleccionadas]
 
-    pdf_stream = BytesIO()
-    pdf.output(pdf_stream)
-    pdf_stream.seek(0)
+        # --- EXPORTAR A PDF ---
+        def generar_pdf(dataframe):
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=10)
+            pdf.cell(200, 10, txt="Reporte Hidroclimático", ln=1, align="C")
+            pdf.ln(5)
 
-    # === Descargas ===
-    st.download_button("📥 Descargar Word", word_stream, file_name="informe.docx")
-    st.download_button("📥 Descargar PDF", pdf_stream, file_name="informe.pdf")
+            col_width = pdf.w / (len(dataframe.columns) + 1)
+            for col in dataframe.columns:
+                pdf.cell(col_width, 10, col, border=1)
+            pdf.ln()
 
-else: st.info("Por favor, carga un archivo para comenzar con el análisis y generación de reportes.")
+            for i, row in dataframe.iterrows():
+                for item in row:
+                    pdf.cell(col_width, 10, str(item), border=1)
+                pdf.ln()
 
+            output = BytesIO()
+            pdf.output(output)
+            return output.getvalue()
+
+        # --- EXPORTAR A WORD ---
+        def generar_word(dataframe):
+            doc = Document()
+            doc.add_heading("Reporte Hidroclimático", 0)
+            t = doc.add_table(rows=1, cols=len(dataframe.columns))
+            hdr_cells = t.rows[0].cells
+            for i, col in enumerate(dataframe.columns):
+                hdr_cells[i].text = col
+
+            for _, row in dataframe.iterrows():
+                row_cells = t.add_row().cells
+                for i, val in enumerate(row):
+                    row_cells[i].text = str(val)
+
+            output = BytesIO()
+            doc.save(output)
+            return output.getvalue()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("⬇️ Descargar PDF"):
+                pdf_bytes = generar_pdf(df_filtrado)
+                b64_pdf = base64.b64encode(pdf_bytes).decode()
+                href = f'<a href="data:application/octet-stream;base64,{b64_pdf}" download="reporte_hidroclimatico.pdf">📄 Descargar Reporte PDF</a>'
+                st.markdown(href, unsafe_allow_html=True)
+
+        with col2:
+            if st.button("⬇️ Descargar Word"):
+                word_bytes = generar_word(df_filtrado)
+                b64_doc = base64.b64encode(word_bytes).decode()
+                href = f'<a href="data:application/octet-stream;base64,{b64_doc}" download="reporte_hidroclimatico.docx">📝 Descargar Reporte Word</a>'
+                st.markdown(href, unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Ocurrió un error al procesar el archivo: {e}")
+else:
+    st.info("Esperando un archivo de entrada para comenzar...")
