@@ -1,115 +1,96 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-from io import BytesIO
-from docx import Document
-from fpdf import FPDF
-import matplotlib.pyplot as plt
-import plotly.graph_objects as go
-from datetime import datetime
+import streamlit as st import pandas as pd import numpy as np import base64 from io import BytesIO from docx import Document from fpdf import FPDF import matplotlib.pyplot as plt import plotly.graph_objects as go from datetime import datetime
 
-st.set_page_config(page_title="HidroClimaPro", layout="wide")
+Función para generar PDF
 
-st.markdown("<h1 style='text-align: center;'>HidroClimaPro: Plataforma de Gestión Hidrometeorológica</h1>", unsafe_allow_html=True)
-st.markdown("---")
+def generate_pdf(df, summary, chart_img): pdf = FPDF() pdf.add_page() pdf.set_font("Arial", size=12)
 
-uploaded_file = st.file_uploader("📂 Cargar archivo de datos (CSV)", type=["csv"])
+pdf.cell(200, 10, txt="Informe Hidrometeorológico", ln=True, align='C')
+pdf.ln(10)
+pdf.multi_cell(0, 10, txt=f"Resumen del informe:\n{summary}\n")
+pdf.ln(5)
 
-if uploaded_file:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success("Archivo cargado correctamente.")
+# Guardar imagen temporalmente para insertar
+img_path = "chart_temp.png"
+with open(img_path, "wb") as f:
+    f.write(chart_img.getbuffer())
+pdf.image(img_path, x=10, w=180)
+pdf.ln(5)
 
-        st.subheader("🔍 Vista previa de los datos")
-        st.dataframe(df, use_container_width=True)
+pdf.cell(200, 10, txt="Tabla de datos:", ln=True)
+for i, row in df.iterrows():
+    row_str = ", ".join(str(val) for val in row)
+    pdf.multi_cell(0, 10, txt=row_str)
 
-        st.markdown("---")
-        st.subheader("📈 Análisis interactivo")
+output = BytesIO()
+pdf.output(output)
+output.seek(0)
+return output
 
-        numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
-        date_columns = df.select_dtypes(include='object').columns.tolist()
+Función para generar Word
 
-        col1, col2 = st.columns(2)
-        with col1:
-            x_axis = st.selectbox("📅 Eje X (fecha o categoría)", options=df.columns)
-        with col2:
-            y_axis = st.selectbox("📊 Eje Y (valor numérico)", options=numeric_columns)
+def generate_word(df, summary): doc = Document() doc.add_heading("Informe Hidrometeorológico", 0) doc.add_paragraph(summary) doc.add_heading("Tabla de datos:", level=1)
 
-        if x_axis and y_axis:
-            try:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df[x_axis], y=df[y_axis],
-                                         mode='lines+markers',
-                                         name='Tendencia'))
-                fig.update_layout(
-                    title=f"Gráfico: {y_axis} en función de {x_axis}",
-                    xaxis_title=x_axis,
-                    yaxis_title=y_axis,
-                    template="plotly_white",
-                    height=500
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error al generar el gráfico: {e}")
+table = doc.add_table(rows=1, cols=len(df.columns))
+hdr_cells = table.rows[0].cells
+for i, col in enumerate(df.columns):
+    hdr_cells[i].text = col
+for _, row in df.iterrows():
+    row_cells = table.add_row().cells
+    for i, val in enumerate(row):
+        row_cells[i].text = str(val)
 
-        st.markdown("---")
-        st.subheader("📝 Generar informe")
+output = BytesIO()
+doc.save(output)
+output.seek(0)
+return output
 
-        with st.form("informe_form"):
-            titulo = st.text_input("Título del informe", "Informe Hidrometeorológico")
-            resumen = st.text_area("Resumen del informe")
-            generar = st.form_submit_button("Generar documento")
+Función para generar gráfico con Plotly
 
-        if generar:
-            try:
-                # Guardar informe en Word
-                doc = Document()
-                doc.add_heading(titulo, 0)
-                doc.add_paragraph(f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-                doc.add_paragraph("Resumen:")
-                doc.add_paragraph(resumen)
-                doc.add_paragraph("Datos:")
-                table = doc.add_table(rows=1, cols=len(df.columns))
-                hdr_cells = table.rows[0].cells
-                for i, col_name in enumerate(df.columns):
-                    hdr_cells[i].text = col_name
-                for _, row in df.iterrows():
-                    row_cells = table.add_row().cells
-                    for i, value in enumerate(row):
-                        row_cells[i].text = str(value)
-                word_stream = BytesIO()
-                doc.save(word_stream)
-                word_stream.seek(0)
-                st.download_button("⬇️ Descargar informe Word", word_stream,
-                                   file_name="informe.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+def create_plot(df): fig = go.Figure() numeric_cols = df.select_dtypes(include=np.number).columns for col in numeric_cols: fig.add_trace(go.Scatter(x=df[df.columns[0]], y=df[col], mode='lines+markers', name=col)) fig.update_layout(title='Visualización de Datos', xaxis_title='Fecha', yaxis_title='Valores') return fig
 
-                # Guardar informe en PDF
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", "B", 16)
-                pdf.cell(200, 10, titulo, ln=True, align="C")
-                pdf.set_font("Arial", "", 12)
-                pdf.cell(200, 10, f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True)
-                pdf.multi_cell(0, 10, f"Resumen:\n{resumen}")
-                pdf.ln(5)
-                pdf.set_font("Arial", "B", 12)
-                col_width = pdf.w / (len(df.columns) + 1)
-                for col in df.columns:
-                    pdf.cell(col_width, 10, col, 1)
-                pdf.ln()
-                pdf.set_font("Arial", "", 10)
-                for _, row in df.iterrows():
-                    for item in row:
-                        pdf.cell(col_width, 10, str(item), 1)
-                    pdf.ln()
-                pdf_stream = BytesIO()
-                pdf.output(pdf_stream)
-                pdf_stream.seek(0)
-                st.download_button("⬇️ Descargar informe PDF", pdf_stream,
-                                   file_name="informe.pdf", mime="application/pdf")
-            except Exception as e:
-                st.error(f"❌ Error al generar documentos: {e}")
-    except Exception as e:
-        st.error(f"❌ Error al procesar el archivo: {e}")
-else:
-    st.warning("Por favor, sube un archivo CSV para comenzar.")
+Interfaz Streamlit
+
+st.set_page_config(layout="wide") st.title("Plataforma Hidrometeorológica Corporativa")
+
+Subida de archivo
+
+uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"]) if uploaded_file is not None: df = pd.read_csv(uploaded_file)
+
+st.subheader("Vista Previa de los Datos")
+st.dataframe(df, use_container_width=True)
+
+# Resumen automático
+st.subheader("Resumen de Datos")
+summary = df.describe().to_string()
+st.text(summary)
+
+# Visualización
+st.subheader("Visualización de Datos")
+try:
+    fig = create_plot(df)
+    st.plotly_chart(fig, use_container_width=True)
+except Exception as e:
+    st.error("Error generando gráficos: " + str(e))
+
+# Exportar informe
+st.subheader("Generar Informe")
+informe_text = st.text_area("Escribe un resumen del informe")
+
+if st.button("Generar Documento"):
+    chart_buf = BytesIO()
+    fig.write_image(chart_buf, format="png")
+    chart_buf.seek(0)
+
+    pdf_file = generate_pdf(df, informe_text, chart_buf)
+    st.download_button("Descargar Informe PDF", data=pdf_file, file_name="informe.pdf", mime="application/pdf")
+
+    word_file = generate_word(df, informe_text)
+    st.download_button("Descargar Informe Word", data=word_file, file_name="informe.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+# Extra: análisis correlacional
+st.subheader("Análisis Correlacional")
+if len(df.select_dtypes(include=np.number).columns) >= 2:
+    st.dataframe(df.corr(), use_container_width=True)
+
+else: st.info("Por favor, sube un archivo CSV para comenzar.")
+
