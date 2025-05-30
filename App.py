@@ -33,12 +33,11 @@ def login():
                  caption="Monitoreo Inteligente del Clima", use_container_width=True)
         st.markdown("<p style='text-align: center; font-style: italic; color: grey;'>Una aplicación moderna para el análisis hidrometeorológico.</p>", unsafe_allow_html=True)
 
-
     with col_login_form:
         st.header("Por favor, inicia sesión")
         usuario = st.text_input("Usuario", help="Introduce tu nombre de usuario.")
         contraseña = st.text_input("Contraseña", type="password", help="Introduce tu contraseña.")
-        
+
         if st.button("🚪 Iniciar sesión", use_container_width=True):
             if usuario in USUARIOS and USUARIOS[usuario] == contraseña:
                 st.session_state.autenticado = True
@@ -143,7 +142,7 @@ def generar_word(df_to_export):
             idx += 1
         for i, col_name in enumerate(df_to_export.columns):
             row_cells[idx + i].text = str(row[col_name])
-            
+
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
@@ -163,7 +162,7 @@ def admin_panel():
     with tab_carga:
         st.header("Sube tus Datos CSV")
         st.info("Aquí puedes cargar tus archivos de datos hidrometeorológicos en formato CSV.")
-        
+
         uploaded_file = st.file_uploader("Arrastra y suelta tu archivo CSV aquí o haz clic para buscarlo", type=["csv"],
                                          help="Asegúrate de que tu archivo CSV esté bien formateado.")
 
@@ -171,13 +170,13 @@ def admin_panel():
             st.session_state.df_cargado = None
             st.warning("Aún no hay datos cargados. Por favor, sube un archivo CSV para empezar a analizar.")
         else:
-            with st.spinner("Cargando y procesando datos..."): # Cadena de texto cerrada
+            with st.spinner("Cargando y procesando datos..."):
                 try:
                     df = pd.read_csv(uploaded_file)
                     st.success("¡CSV cargado exitosamente! 🎉")
 
                     fecha_col_candidatas = [col for col in df.columns if 'fecha' in col.lower() or 'date' in col.lower()]
-                    
+
                     df_copy = df.copy()
 
                     if fecha_col_candidatas:
@@ -190,10 +189,10 @@ def admin_panel():
                                     break
                             except Exception:
                                 pass
-                    
+
                     if not isinstance(df_copy.index, pd.DatetimeIndex):
-                         st.info("No se encontró una columna de fecha/hora automática.")
-                         if st.checkbox("¿Tu archivo tiene una columna de fecha/hora para el índice?"):
+                        st.info("No se encontró una columna de fecha/hora automática.")
+                        if st.checkbox("¿Tu archivo tiene una columna de fecha/hora para el índice?"):
                             date_column_options = [col for col in df.columns if df[col].dtype == 'object']
                             if date_column_options:
                                 date_column = st.selectbox("Selecciona la columna de fecha/hora:", options=date_column_options)
@@ -210,7 +209,7 @@ def admin_panel():
                             else:
                                 st.warning("No hay columnas de texto que puedan ser fechas. Asegúrate del formato.")
 
-                        st.subheader("📋 Vista Previa de los Datos Cargados")
+                        st.subheader("📋 Vista Previa de los Datos Cargados") # Corregido la indentación
                         st.dataframe(df_copy)
                         st.session_state.df_cargado = df_copy
 
@@ -219,7 +218,6 @@ def admin_panel():
                         st.info("Por favor, verifica que el archivo es un CSV válido y no está corrupto. Intenta con otro archivo.")
                         st.session_state.df_cargado = None
 
-    # --- Acceso al DataFrame cargado (o vacío si no hay) ---
     df_actual = st.session_state.df_cargado
 
     with tab_analisis:
@@ -227,7 +225,7 @@ def admin_panel():
         st.info("Usa estas herramientas para interactuar con tus datos cargados y generar visualizaciones dinámicas.")
 
         if df_actual is not None and not df_actual.empty:
-            
+
             st.subheader("🎨 Configura tu Gráfico Interactivo")
             col_graph_type, col_x_axis, col_y_axis = st.columns(3)
 
@@ -237,14 +235,14 @@ def admin_panel():
                     options=["Líneas", "Dispersión", "Barras", "Histograma", "Caja", "Correlación"],
                     help="Elige la representación visual que mejor se adapte a tu análisis."
                 )
-            
+
             numeric_cols = df_actual.select_dtypes(include=['number']).columns.tolist()
             categorical_cols = df_actual.select_dtypes(include=['object', 'category']).columns.tolist()
-            
+
             if isinstance(df_actual.index, pd.DatetimeIndex):
                 index_name = df_actual.index.name if df_actual.index.name else 'Fecha/Índice'
                 numeric_cols.insert(0, index_name)
-            
+
             if graph_type == "Correlación":
                 with col_x_axis:
                     st.empty()
@@ -253,13 +251,15 @@ def admin_panel():
                 if not numeric_cols:
                     st.warning("No hay columnas numéricas para generar la matriz de correlación.")
                 elif len(numeric_cols) < 2:
-                     st.info("Necesitas al menos dos columnas numéricas para ver la correlación.")
+                    st.info("Necesitas al menos dos columnas numéricas para ver la correlación.")
                 else:
                     st.subheader("📊 Matriz de Correlación")
                     try:
-                        cols_for_corr = [col for col in numeric_cols if col != index_name if pd.api.types.is_numeric_dtype(df_actual[col])]
+                        cols_for_corr = [col for col in numeric_cols if col != index_name if
+                                         pd.api.types.is_numeric_dtype(df_actual[col])]
                         if cols_for_corr:
-                            fig_corr = px.imshow(df_actual[cols_for_corr].corr(), text_auto=True, color_continuous_scale=px.colors.sequential.Viridis,
+                            fig_corr = px.imshow(df_actual[cols_for_corr].corr(), text_auto=True,
+                                                color_continuous_scale=px.colors.sequential.Viridis,
                                                 title="Relación entre Variables Numéricas")
                             st.plotly_chart(fig_corr, use_container_width=True)
                         else:
@@ -270,15 +270,18 @@ def admin_panel():
 
             elif graph_type in ["Líneas", "Dispersión", "Barras", "Histograma", "Caja"]:
                 with col_x_axis:
-                    x_axis = st.selectbox("Eje X:", options=df_actual.columns.tolist() + ([df_actual.index.name] if isinstance(df_actual.index, pd.DatetimeIndex) and df_actual.index.name else []), key="x_axis_select")
+                    x_axis = st.selectbox("Eje X:", options=df_actual.columns.tolist() + (
+                        [df_actual.index.name] if isinstance(df_actual.index, pd.DatetimeIndex) and df_actual.index.name else []),
+                                          key="x_axis_select")
                 with col_y_axis:
-                    y_axis_options = [col for col in df_actual.columns.tolist() if col != x_axis and pd.api.types.is_numeric_dtype(df_actual[col])]
+                    y_axis_options = [col for col in df_actual.columns.tolist() if
+                                      col != x_axis and pd.api.types.is_numeric_dtype(df_actual[col])]
                     y_axis = st.selectbox("Eje Y:", options=y_axis_options, key="y_axis_select")
 
                 if x_axis and y_axis:
                     try:
                         plot_df = df_actual.reset_index() if isinstance(df_actual.index, pd.DatetimeIndex) else df_actual.copy()
-                        
+
                         if graph_type == "Líneas":
                             fig = px.line(plot_df, x=x_axis, y=y_axis, title=f"Tendencia de {y_axis} vs {x_axis}")
                         elif graph_type == "Dispersión":
@@ -289,10 +292,11 @@ def admin_panel():
                             fig = px.histogram(plot_df, x=x_axis, title=f"Distribución de {x_axis}", marginal="rug")
                         elif graph_type == "Caja":
                             fig = px.box(plot_df, x=x_axis, y=y_axis, title=f"Distribución en Caja de {y_axis} por {x_axis}")
-                        
+
                         st.plotly_chart(fig, use_container_width=True)
                     except Exception as e:
-                        st.error(f"No se pudo generar el gráfico de {graph_type}. Asegúrate de seleccionar columnas apropiadas. Error: {e}")
+                        st.error(
+                            f"No se pudo generar el gráfico de {graph_type}. Asegúrate de seleccionar columnas apropiadas. Error: {e}")
                 else:
                     st.info("Selecciona las columnas para el eje X y Y para generar el gráfico.")
             else:
@@ -319,7 +323,7 @@ def admin_panel():
                     mime="application/pdf",
                     help="Descarga un informe detallado de tus datos en formato PDF."
                 )
-            
+
             with col_word:
                 with st.spinner("Generando Word..."):
                     word_data = generar_word(df_actual)
@@ -348,4 +352,4 @@ def main():
         login()
 
 main()
-    
+        
