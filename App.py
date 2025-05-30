@@ -23,8 +23,8 @@ def login():
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
             st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
-            st.query_params.update({"logged": "true"})
-            st.experimental_rerun()
+            # Eliminar st.query_params.update({"logged": "true"}) y st.experimental_rerun()
+            # El cambio en st.session_state.autenticado hará que main() redibuje el panel de admin
         else:
             st.error("❌ Usuario o contraseña incorrectos")
 
@@ -32,8 +32,8 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-    st.query_params.clear()
-    st.experimental_rerun()
+    # Eliminar st.query_params.clear() y st.experimental_rerun()
+    # El cambio en st.session_state.autenticado hará que main() redibuje el formulario de login
 
 # ----------------- Generar PDF -----------------
 def generar_pdf(df):
@@ -42,9 +42,15 @@ def generar_pdf(df):
     pdf.set_font("Arial", size=12)
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
-    for i in range(len(df)):
-        row = df.iloc[i].to_string()
-        pdf.multi_cell(0, 10, txt=row)
+    # Ajustar el ancho de las celdas para que no se superpongan
+    col_width = pdf.w / (len(df.columns) + 1) # +1 para el índice
+    for col in df.columns:
+        pdf.cell(col_width, 10, str(col), border=1)
+    pdf.ln()
+    for index, row in df.iterrows():
+        pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1) # Formatear la fecha
+        for item in row:
+            pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
     buffer = BytesIO()
     pdf.output(buffer)
@@ -71,7 +77,7 @@ def generar_word(df):
 def admin_panel():
     st.title("🛠️ Panel de Administración")
     df = pd.DataFrame({
-        "fecha": pd.date_range(start="2023-01-01", periods=10),
+        "fecha": pd.to_datetime(pd.date_range(start="2023-01-01", periods=10)),
         "lluvia": [23, 12, 45, 67, 34, 22, 11, 56, 78, 21],
         "temperatura": [20, 21, 19, 18, 22, 23, 25, 24, 22, 21],
         "humedad": [60, 65, 63, 66, 62, 64, 67, 61, 59, 58]
