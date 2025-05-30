@@ -168,12 +168,9 @@ def admin_panel():
             st.warning("El DataFrame cargado no contiene columnas numéricas para generar gráficos.")
 
         st.subheader("📤 Exportar Datos")
-        pdf_data = generar_pdf(df_actual)
-        word_data = generar_word(df_actual)
-
-        st.download_button(
+                st.download_button(
             label="📄 Descargar PDF",
-            data=pdf_data,
+            data=generar_pdf(df_actual), # Llama a la función generar_pdf directamente aquí
             file_name="reporte.pdf",
             mime="application/pdf"
         )
