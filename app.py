@@ -30,26 +30,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ---- ENCABEZADO ----
 st.title("🌦️ HidroClimaPro - Plataforma de Análisis Hidrometeorológico")
 st.markdown("Sube tus mediciones climáticas o hidrológicas y genera informes rápidamente.")
 
-# ---- CARGA DE DATOS ----
 uploaded_file = st.file_uploader("📂 Sube un archivo de datos (CSV)", type=["csv"])
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
     st.success("✅ Archivo cargado correctamente.")
 
-    # ---- VISUALIZACIÓN DE DATOS ----
     st.subheader("🔍 Vista previa de los datos")
     st.dataframe(df.head(50))
 
-    # ---- ANÁLISIS ESTADÍSTICO ----
     st.subheader("📊 Análisis estadístico")
     st.write(df.describe())
 
-    # ---- GRÁFICO DINÁMICO ----
     st.subheader("📈 Visualización interactiva")
     columnas_numericas = df.select_dtypes(include='number').columns.tolist()
     if len(columnas_numericas) >= 2:
@@ -58,7 +53,6 @@ if uploaded_file is not None:
         fig = px.scatter(df, x=eje_x, y=eje_y, title="Relación entre variables")
         st.plotly_chart(fig, use_container_width=True)
 
-    # ---- EXPORTACIÓN A WORD ----
     def generar_docx(dataframe):
         doc = Document()
         doc.add_heading("Informe de Datos Hidrometeorológicos", 0)
@@ -77,7 +71,6 @@ if uploaded_file is not None:
         buffer.seek(0)
         return buffer
 
-    # ---- EXPORTACIÓN A PDF ----
     def generar_pdf(dataframe):
         pdf = FPDF()
         pdf.add_page()
@@ -91,20 +84,27 @@ if uploaded_file is not None:
                 val = stats.loc[stat, col]
                 pdf.cell(200, 10, txt=f"  {stat}: {val:.2f}", ln=True)
             pdf.ln(5)
-        buffer = BytesIO()
-        pdf.output(buffer)
-        buffer.seek(0)
-        return buffer
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        return BytesIO(pdf_bytes)
 
-    # ---- BOTONES DE EXPORTACIÓN ----
+    st.subheader("📥 Exportar informe")
+
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("📤 Exportar a Word"):
-            docx_file = generar_docx(df)
-            st.download_button(label="Descargar Word", data=docx_file, file_name="informe.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        docx_buffer = generar_docx(df)
+        st.download_button(
+            label="📄 Descargar informe en Word",
+            data=docx_buffer,
+            file_name="informe.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
 
     with col2:
-        if st.button("📤 Exportar a PDF"):
-            pdf_file = generar_pdf(df)
-            st.download_button(label="Descargar PDF", data=pdf_file, file_name="informe.pdf", mime="application/pdf")
+        pdf_buffer = generar_pdf(df)
+        st.download_button(
+            label="🧾 Descargar informe en PDF",
+            data=pdf_buffer,
+            file_name="informe.pdf",
+            mime="application/pdf"
+                )
