@@ -23,7 +23,7 @@ def login():
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
             st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
-            st.rerun() # Forzar re-ejecución para cargar el panel de admin
+            st.rerun()
         else:
             st.error("❌ Usuario o contraseña incorrectos")
 
@@ -31,7 +31,7 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-    st.rerun() # Forzar re-ejecución para volver al login
+    st.rerun()
 
 # ----------------- Generar PDF -----------------
 def generar_pdf(df_to_export):
@@ -61,17 +61,17 @@ def generar_pdf(df_to_export):
     return pdf_data
 
 # ----------------- Generar Word -----------------
-def generar_word(df_to_export):
+def generar_word(df_to_export): # Aquí se recibe df_to_export
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
     table = doc.add_table(rows=1, cols=len(df_to_export.columns))
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df_to_export.columns):
+    for i, col in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns
         hdr_cells[i].text = col
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        for i, col in enumerate(df.columns): # Corregido: Usar df.columns en lugar de df_to_export.columns en esta línea
-            row_cells[i].text = str(row[col])
+        for i, col_name in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns y col_name
+            row_cells[i].text = str(row[col_name])
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
@@ -84,18 +84,14 @@ def admin_panel():
     st.subheader("📁 Cargar Datos (CSV)")
     uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
 
-    # Reiniciar df_cargado si no hay archivo subido en la ejecución actual
-    # Esto asegura que si el usuario quita el archivo, los gráficos desaparecen
     if uploaded_file is None:
         st.session_state.df_cargado = None
 
-    # Si se sube un nuevo archivo, procesarlo
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
             st.success("Archivo CSV cargado exitosamente.")
 
-            # Intentar convertir una columna a fecha si existe 'fecha' o similar
             if 'fecha' in df.columns:
                 try:
                     df['fecha'] = pd.to_datetime(df['fecha'])
@@ -116,18 +112,15 @@ def admin_panel():
             st.subheader("Vista Previa de los Datos")
             st.dataframe(df)
 
-            # Guardar el DataFrame en session_state para que esté disponible en re-ejecuciones
             st.session_state.df_cargado = df
 
         except Exception as e:
             st.error(f"Error al leer el archivo CSV: {e}")
             st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
-            st.session_state.df_cargado = None # Resetear si hay error
+            st.session_state.df_cargado = None
     
-    # Usar el DataFrame cargado (si existe) para los gráficos y exportaciones
     df_actual = st.session_state.df_cargado
 
-    # Solo mostrar los gráficos y exportaciones si se ha cargado un DataFrame válido
     if df_actual is not None and not df_actual.empty:
         numeric_df = df_actual.select_dtypes(include=['number'])
 
@@ -213,4 +206,4 @@ def main():
         login()
 
 main()
-        
+            
