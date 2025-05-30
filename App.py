@@ -184,7 +184,6 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-    else:
 
     if st.button("Cerrar sesión"):
         logout()
