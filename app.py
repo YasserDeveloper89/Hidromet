@@ -1,24 +1,26 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
-from fpdf import FPDF
-from docx import Document
 import plotly.express as px
 import plotly.graph_objects as go
+from fpdf import FPDF
+from docx import Document
+from io import BytesIO
 
-# -----------------------------
-# Credenciales y estado inicial
-# -----------------------------
-USERS = {"admin": "admin123"}  # Puedes ampliar esta lista con más usuarios
+# --------------------
+# CONFIGURACIÓN INICIAL
+# --------------------
+st.set_page_config(page_title="Panel Administrador", layout="wide")
 
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+USERS = {"admin": "admin123"}
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
 
-# -----------------------------
-# Funciones de exportación
-# -----------------------------
+# --------------------
+# FUNCIONES UTILITARIAS
+# --------------------
 def export_to_pdf(df):
     try:
         pdf = FPDF()
@@ -26,12 +28,10 @@ def export_to_pdf(df):
         pdf.set_font("Arial", size=10)
         col_width = pdf.w / (len(df.columns) + 1)
 
-        # Títulos
         for col in df.columns:
             pdf.cell(col_width, 10, col, 1)
         pdf.ln()
 
-        # Datos
         for index, row in df.iterrows():
             for item in row:
                 pdf.cell(col_width, 10, str(item), 1)
@@ -67,76 +67,77 @@ def export_to_word(df):
         st.error(f"Error al generar Word: {e}")
         return None
 
-# -----------------------------
-# Panel de administrador
-# -----------------------------
+# --------------------
+# PANEL DE ADMINISTRADOR
+# --------------------
 def admin_panel():
-    st.title("Panel de Control del Administrador 👨‍💼")
-
+    st.title("📊 Panel de Control del Administrador")
+    
     uploaded_file = st.file_uploader("📤 Cargar archivo CSV", type=["csv"])
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.success("Archivo cargado correctamente ✅")
-
-        st.subheader("🔍 Vista previa de datos")
-        st.dataframe(df)
-
-        st.subheader("📊 Estadísticas básicas")
-        st.write(df.describe())
-
-        st.subheader("📈 Gráficos interactivos")
         try:
+            df = pd.read_csv(uploaded_file)
+            st.success("Archivo cargado correctamente ✅")
+
+            st.subheader("🔍 Vista previa de datos")
+            st.dataframe(df)
+
+            st.subheader("📈 Estadísticas básicas")
+            st.write(df.describe())
+
+            st.subheader("📌 Gráfico de correlación")
             numeric_df = df.select_dtypes(include='number')
-            fig_corr = px.imshow(numeric_df.corr(), text_auto=True, aspect="auto")
-            st.plotly_chart(fig_corr)
+            if not numeric_df.empty:
+                fig_corr = px.imshow(numeric_df.corr(), text_auto=True, aspect="auto")
+                st.plotly_chart(fig_corr, use_container_width=True)
+            else:
+                st.warning("No hay suficientes datos numéricos para graficar.")
+
+            pdf_buffer = export_to_pdf(df)
+            if pdf_buffer:
+                st.download_button("📄 Descargar PDF", data=pdf_buffer, file_name="informe.pdf", mime="application/pdf")
+
+            word_buffer = export_to_word(df)
+            if word_buffer:
+                st.download_button("📝 Descargar Word", data=word_buffer, file_name="informe.docx",
+                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
         except Exception as e:
-            st.error(f"Ocurrió un error al generar el gráfico de correlación: {e}")
-
-        # Exportar
-        pdf_buffer = export_to_pdf(df)
-        if pdf_buffer:
-            st.download_button("📄 Descargar PDF", data=pdf_buffer, file_name="informe.pdf", mime="application/pdf")
-
-        word_buffer = export_to_word(df)
-        if word_buffer:
-            st.download_button("📝 Descargar Word", data=word_buffer, file_name="informe.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            st.error(f"Ocurrió un error al procesar el archivo: {e}")
     else:
         st.info("Por favor cargue un archivo para acceder a las herramientas.")
 
-    st.button("🚪 Cerrar sesión", on_click=logout)
+    st.markdown("---")
+    if st.button("🚪 Cerrar sesión"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
 
-# -----------------------------
-# Función de login
-# -----------------------------
+# --------------------
+# LOGIN
+# --------------------
 def login():
-    st.title("Iniciar sesión")
+    st.title("Acceso al Sistema")
 
-    username = st.text_input("Usuario")
-    password = st.text_input("Contraseña", type="password")
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        submit = st.form_submit_button("Iniciar sesión")
 
-    if st.button("Iniciar sesión"):
+    if submit:
         if username in USERS and USERS[username] == password:
-            st.session_state.authenticated = True
+            st.session_state.logged_in = True
             st.session_state.username = username
-            st.success(f"Login exitoso. Bienvenido, {username}")
+            st.success(f"Bienvenido, {username}")
         else:
             st.error("Credenciales inválidas")
 
-# -----------------------------
-# Logout
-# -----------------------------
-def logout():
-    st.session_state.authenticated = False
-    st.session_state.username = ""
-
-# -----------------------------
+# --------------------
 # MAIN
-# -----------------------------
+# --------------------
 def main():
-    if st.session_state.authenticated:
+    if st.session_state.logged_in:
         admin_panel()
     else:
         login()
 
-if __name__ == "__main__":
-    main()
+main()
