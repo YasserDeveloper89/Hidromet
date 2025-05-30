@@ -6,7 +6,7 @@ import base64
 from io import BytesIO
 from fpdf import FPDF
 from docx import Document
-from datetime import datetime # Import for the new temperature feature
+from datetime import datetime # Added for the new temperature feature
 
 # ----------------- Autenticación -----------------
 USUARIOS = {
@@ -42,23 +42,24 @@ def generar_pdf(df_to_export):
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
 
-    # Add table headers
-    # Ensure all columns are handled
-    col_widths = [pdf.w / (len(df_to_export.columns) + 1)] * len(df_to_export.columns) # Adjust as needed
-    
-    # Try to fit content, simple fixed width for now
+    # Calculate column widths to fit the page
+    # A more robust solution might dynamically adjust based on content length
+    col_width = pdf.w / (len(df_to_export.columns) + 1) # +1 if you want to include index as a column
+    # Let's make it simpler for now and assume it fits, or you can calculate exact widths
+    # For now, a fixed width per column, assuming reasonable number of columns
+    effective_col_width = (pdf.w - 2 * pdf.l_margin) / len(df_to_export.columns)
+
+    # Add header row
     for col in df_to_export.columns:
-        pdf.cell(40, 10, str(col), border=1) # Fixed width, adjust if cols are too wide
+        pdf.cell(effective_col_width, 10, str(col), border=1)
     pdf.ln()
 
+    # Add data rows
     for index, row in df_to_export.iterrows():
-        # This part handles the index if it's a Timestamp, otherwise just print it.
-        # However, for the PDF generation based on df_to_export, typically you'd just iterate through rows.
-        # Assuming df_to_export is just the data. If index needs to be a column, it should be in df_to_export.
-        
-        # Iterating through row items directly
+        # If the DataFrame index represents data you want in the PDF, you'd add it here.
+        # Otherwise, just iterate through row items.
         for item in row:
-            pdf.cell(40, 10, str(item), border=1) # Fixed width
+            pdf.cell(effective_col_width, 10, str(item), border=1)
         pdf.ln()
 
     buffer = BytesIO()
@@ -87,22 +88,20 @@ def admin_panel():
     st.title("🛠️ Panel de Administración")
     st.write(f"Bienvenido, {st.session_state.usuario}")
 
-    # --- CSV Upload Section ---
-    st.subheader("📁 Cargar y Analizar Datos (CSV)")
-    # This is the line that will remain, with clear instructions without repetition
-    uploaded_file = st.file_uploader("Sube tu archivo CSV aquí para visualizar y analizar.", type=["csv"]) 
+    # --- CSV Upload Section (Original structure preserved) ---
+    st.subheader("📁 Cargar Datos (CSV)")
+    uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
 
-    # Initialize df_cargado if no file is uploaded
     if uploaded_file is None:
         st.session_state.df_cargado = None
-    
-    # Process uploaded file and set df_cargado
-    if uploaded_file is not None:
+        # This is the line that will remain when NO file is uploaded yet,
+        # but the duplicate when a file IS uploaded will be removed.
+        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación aquí.")
+    else: # This block runs when a file IS uploaded
         try:
             df = pd.read_csv(uploaded_file)
             st.success("Archivo CSV cargado exitosamente.")
 
-            # Attempt to set 'fecha' as index
             if 'fecha' in df.columns:
                 try:
                     df['fecha'] = pd.to_datetime(df['fecha'])
@@ -130,15 +129,11 @@ def admin_panel():
             st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
             st.session_state.df_cargado = None
     
-    # --- Conditional Display of CSV-related tools ---
     df_actual = st.session_state.df_cargado
 
-    if df_actual is None: # If no CSV is loaded, show the initial prompt
-        # THIS IS THE EXACT LINE THAT WAS REQUESTED TO BE REMOVED WHEN IT WAS DUPLICATED,
-        # BUT IT'S APPROPRIATE TO SHOW HERE WHEN NO FILE IS YET UPLOADED.
-        # Previous removal attempt was incorrect.
-        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación.")
-    elif df_actual is not None and not df_actual.empty: # Only show these if a CSV is loaded
+    # This block now runs ONLY if df_actual is not None AND not empty
+    # This ensures all original tools appear AFTER a CSV is successfully loaded.
+    if df_actual is not None and not df_actual.empty:
         numeric_df = df_actual.select_dtypes(include=['number'])
 
         if not numeric_df.empty:
@@ -201,10 +196,12 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-    
+    # The redundant "Sube un archivo CSV..." line is now removed from here,
+    # as it's handled by the `uploaded_file is None` block above.
+
     ---
 
-    # --- Nueva Herramienta: Visualización de Temperatura y Fecha (Siempre visible) ---
+    # --- Nueva Herramienta: Visualización de Temperatura y Fecha (Always Visible) ---
     st.subheader("🌡️ Visualización de Datos de Temperatura y Ambiente")
     st.write("Aquí puedes monitorear de manera clara e intuitiva datos ambientales clave como la temperatura y la fecha.")
 
