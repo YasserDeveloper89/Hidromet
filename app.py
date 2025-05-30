@@ -10,19 +10,10 @@ from datetime import datetime
 
 st.set_page_config(page_title="HidroClimaPRO", layout="wide")
 
-# ==================== MODO OSCURO/CLARO ====================
-theme = st.sidebar.radio("Selecciona tema:", ["Claro", "Oscuro"])
-if theme == "Oscuro":
-    st.markdown("""
-        <style>
-            body { background-color: #1e1e1e; color: #ffffff; }
-            .stApp { background-color: #1e1e1e; color: #ffffff; }
-            .css-18e3th9, .css-1d391kg { background-color: #1e1e1e; color: #ffffff; }
-        </style>
-    """, unsafe_allow_html=True)
-
-# ==================== CARGA DE ARCHIVO ====================
+# ======================== TÍTULO ========================
 st.title("📊 HidroClimaPRO - Sistema Integral de Reportes")
+
+# ======================== CARGA DE ARCHIVO ========================
 uploaded_file = st.file_uploader("Carga un archivo CSV o Excel", type=["csv", "xlsx"])
 
 if uploaded_file:
@@ -31,30 +22,28 @@ if uploaded_file:
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
-        st.success("Archivo cargado correctamente.")
+        st.success("✅ Archivo cargado correctamente.")
 
-        st.subheader("Vista previa de los datos")
+        st.subheader("🔍 Vista previa de los datos")
         st.dataframe(df, use_container_width=True)
 
-        # ==================== ANÁLISIS AVANZADO ====================
-        st.subheader("🔬 Análisis de datos")
+        # ======================== ANÁLISIS ========================
+        st.subheader("📈 Análisis de datos")
         numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
         date_cols = df.select_dtypes(include=["datetime64", "object"]).columns.tolist()
 
         col_to_plot = st.selectbox("Selecciona una columna numérica para analizar", numeric_cols)
         if col_to_plot:
-            st.write(f"Resumen estadístico de **{col_to_plot}**")
+            st.write(f"📊 Resumen estadístico de **{col_to_plot}**")
             st.write(df[col_to_plot].describe())
             fig, ax = plt.subplots()
             df[col_to_plot].hist(bins=30, edgecolor='black', ax=ax)
             ax.set_title(f"Histograma de {col_to_plot}")
-            ax.set_xlabel(col_to_plot)
-            ax.set_ylabel("Frecuencia")
             st.pyplot(fig)
 
-        # ==================== VISUALIZACIÓN AVANZADA ====================
-        st.subheader("📈 Visualización de datos")
-        time_col = st.selectbox("Selecciona columna de fecha (opcional)", date_cols)
+        # ======================== VISUALIZACIÓN ========================
+        st.subheader("📆 Visualización temporal")
+        time_col = st.selectbox("Selecciona columna de fecha", date_cols)
         metric_col = st.selectbox("Selecciona métrica a visualizar", numeric_cols)
 
         if time_col and metric_col:
@@ -68,12 +57,12 @@ if uploaded_file:
                 ax.set_ylabel(metric_col)
                 st.pyplot(fig)
             except Exception as e:
-                st.warning(f"Error en visualización: {e}")
+                st.warning(f"⚠️ Error en visualización: {e}")
 
-        # ==================== GENERACIÓN DE INFORMES ====================
-        st.subheader("📝 Generación de informe")
+        # ======================== INFORME ========================
+        st.subheader("📝 Generar informe")
         titulo = st.text_input("Título del informe")
-        resumen = st.text_area("Resumen o conclusiones")
+        resumen = st.text_area("Resumen del informe")
 
         def generar_pdf(dataframe, titulo, resumen):
             pdf = FPDF()
@@ -88,17 +77,18 @@ if uploaded_file:
             col_width = pdf.w / (len(dataframe.columns) + 1)
             row_height = pdf.font_size * 1.5
             for col in dataframe.columns:
-                pdf.cell(col_width, row_height, col, border=1)
+                pdf.cell(col_width, row_height, str(col), border=1)
             pdf.ln(row_height)
+
             pdf.set_font("Arial", "", 10)
             for _, row in dataframe.iterrows():
                 for item in row:
                     pdf.cell(col_width, row_height, str(item), border=1)
                 pdf.ln(row_height)
 
-            output = BytesIO()
-            pdf.output(output)
-            return output.getvalue()
+            temp_path = "/tmp/informe.pdf"
+            pdf.output(temp_path)
+            return temp_path
 
         def generar_word(dataframe, titulo, resumen):
             doc = Document()
@@ -121,25 +111,27 @@ if uploaded_file:
             return output.getvalue()
 
         col1, col2 = st.columns(2)
+
         with col1:
             if st.button("📄 Exportar a PDF"):
                 try:
-                    pdf_data = generar_pdf(df, titulo, resumen)
-                    b64_pdf = base64.b64encode(pdf_data).decode()
-                    href = f'<a href="data:application/pdf;base64,{b64_pdf}" download="informe.pdf">Descargar PDF</a>'
-                    st.markdown(href, unsafe_allow_html=True)
+                    pdf_path = generar_pdf(df, titulo, resumen)
+                    with open(pdf_path, "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode()
+                        href = f'<a href="data:application/pdf;base64,{b64}" download="informe.pdf">📥 Descargar PDF</a>'
+                        st.markdown(href, unsafe_allow_html=True)
                 except Exception as e:
-                    st.error(f"Error al generar PDF: {e}")
+                    st.error(f"❌ Error al generar PDF: {e}")
 
         with col2:
             if st.button("📝 Exportar a Word"):
                 try:
                     word_data = generar_word(df, titulo, resumen)
-                    b64_word = base64.b64encode(word_data).decode()
-                    href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64_word}" download="informe.docx">Descargar Word</a>'
+                    b64 = base64.b64encode(word_data).decode()
+                    href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="informe.docx">📥 Descargar Word</a>'
                     st.markdown(href, unsafe_allow_html=True)
                 except Exception as e:
-                    st.error(f"Error al generar Word: {e}")
+                    st.error(f"❌ Error al generar Word: {e}")
 
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar el archivo: {e}")
+        st.error(f"❌ Error al procesar archivo: {e}")
