@@ -1,110 +1,90 @@
-import streamlit as st
-import pandas as pd
-from io import BytesIO
-from docx import Document
-from fpdf import FPDF
-import base64
-import plotly.express as px
+hydromet_pro_app.py
 
-st.set_page_config(page_title="HidroClimaPro", layout="wide")
+Sistema completo con roles, autenticación, funcionalidades avanzadas y estilo profesional
 
-# ---- ESTILOS ----
-st.markdown("""
-    <style>
-        body {
-            font-family: 'Segoe UI', sans-serif;
-        }
-        .main {
-            padding: 2rem;
-        }
-        .stButton>button {
-            background-color: #0078D4;
-            color: white;
-            border-radius: 8px;
-            padding: 10px 24px;
-            border: none;
-        }
-        .stButton>button:hover {
-            background-color: #005a9e;
-        }
-    </style>
-""", unsafe_allow_html=True)
+Este es un esqueleto base extendido de la aplicación para ser escalado y funcional 100%
 
-st.title("🌦️ HidroClimaPro - Plataforma de Análisis Hidrometeorológico")
-st.markdown("Sube tus mediciones climáticas o hidrológicas y genera informes rápidamente.")
+import streamlit as st import pandas as pd import numpy as np import datetime from io import BytesIO from fpdf import FPDF from docx import Document import base64
 
-uploaded_file = st.file_uploader("📂 Sube un archivo de datos (CSV)", type=["csv"])
+-------- CONFIGURACIÓN INICIAL --------
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.success("✅ Archivo cargado correctamente.")
+st.set_page_config(page_title="HydroClimaPro", layout="wide")
 
-    st.subheader("🔍 Vista previa de los datos")
-    st.dataframe(df.head(50))
+st.markdown(""" <style> .main { background-color: #f7f9fc; } .css-1d391kg { padding: 2rem 3rem; } .report-title { font-size: 24px; font-weight: bold; color: #143d59; } .data-label { font-weight: bold; color: #333; } .section-header { font-size: 20px; color: #275dad; margin-top: 30px; } .btn-download { background-color: #143d59; color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; } </style> """, unsafe_allow_html=True)
 
-    st.subheader("📊 Análisis estadístico")
-    st.write(df.describe())
+-------- SISTEMA DE USUARIOS SIMPLIFICADO --------
 
-    st.subheader("📈 Visualización interactiva")
-    columnas_numericas = df.select_dtypes(include='number').columns.tolist()
-    if len(columnas_numericas) >= 2:
-        eje_x = st.selectbox("Selecciona el eje X", columnas_numericas)
-        eje_y = st.selectbox("Selecciona el eje Y", columnas_numericas, index=1)
-        fig = px.scatter(df, x=eje_x, y=eje_y, title="Relación entre variables")
-        st.plotly_chart(fig, use_container_width=True)
+usuarios = { "tecnico": {"password": "1234", "rol": "Técnico de Campo"}, "analista": {"password": "5678", "rol": "Analista"}, "supervisor": {"password": "admin1", "rol": "Supervisor"}, "admin": {"password": "admin", "rol": "Administrador"}, }
 
-    def generar_docx(dataframe):
-        doc = Document()
-        doc.add_heading("Informe de Datos Hidrometeorológicos", 0)
-        doc.add_paragraph("Resumen estadístico:")
-        desc = dataframe.describe().reset_index()
-        table = doc.add_table(rows=1, cols=len(desc.columns))
-        hdr_cells = table.rows[0].cells
-        for i, col in enumerate(desc.columns):
-            hdr_cells[i].text = str(col)
-        for _, row in desc.iterrows():
-            row_cells = table.add_row().cells
-            for i, item in enumerate(row):
-                row_cells[i].text = str(item)
-        buffer = BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
+if "usuario" not in st.session_state: st.session_state.usuario = None
 
-    def generar_pdf(dataframe):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="Informe Hidrometeorológico", ln=True, align="C")
-        pdf.ln(10)
-        stats = dataframe.describe()
-        for col in stats.columns:
-            pdf.cell(200, 10, txt=f"Variable: {col}", ln=True)
-            for stat in stats.index:
-                val = stats.loc[stat, col]
-                pdf.cell(200, 10, txt=f"  {stat}: {val:.2f}", ln=True)
-            pdf.ln(5)
-        pdf_bytes = pdf.output(dest='S').encode('latin-1')
-        return BytesIO(pdf_bytes)
+-------- LOGIN --------
 
-    st.subheader("📥 Exportar informe")
+if not st.session_state.usuario: st.title("🔐 Inicio de sesión") user = st.text_input("Usuario") pwd = st.text_input("Contraseña", type="password") if st.button("Iniciar sesión"): if user in usuarios and usuarios[user]["password"] == pwd: st.session_state.usuario = user st.rerun() else: st.error("Credenciales incorrectas") st.stop()
 
+rol = usuarios[st.session_state.usuario]["rol"] st.sidebar.success(f"Usuario: {st.session_state.usuario} ({rol})")
+
+-------- MENÚ LATERAL --------
+
+opcion = st.sidebar.radio("Menú", [ "Inicio", "Importar Datos", "Visualizar & Filtrar", "Reportes", "Mapa de Estaciones", "Bitácoras" if rol != "Técnico de Campo" else None, "Administración" if rol == "Administrador" else None ])
+
+-------- FUNCIONES UTILES --------
+
+def generar_pdf(df): pdf = FPDF() pdf.add_page() pdf.set_font("Arial", size=12) pdf.cell(200, 10, txt="Reporte Hidrometeorológico", ln=1, align="C") for i, row in df.iterrows(): pdf.cell(200, 10, txt=f"{row.to_dict()}", ln=1) buffer = BytesIO() pdf.output(buffer) buffer.seek(0) return buffer
+
+def generar_word(df): doc = Document() doc.add_heading("Reporte Hidrometeorológico", 0) table = doc.add_table(rows=1, cols=len(df.columns)) hdr_cells = table.rows[0].cells for i, col in enumerate(df.columns): hdr_cells[i].text = col for _, row in df.iterrows(): row_cells = table.add_row().cells for i, val in enumerate(row): row_cells[i].text = str(val) buffer = BytesIO() doc.save(buffer) buffer.seek(0) return buffer
+
+-------- INICIO --------
+
+if opcion == "Inicio": st.title("🌧️ HydroClimaPro") st.markdown(f"Bienvenido {st.session_state.usuario}, rol: {rol}") st.markdown("""Esta plataforma te permite importar, visualizar, analizar y generar reportes sobre datos hidrológicos y meteorológicos de manera eficiente.")
+
+-------- IMPORTAR DATOS --------
+
+elif opcion == "Importar Datos": st.title("📥 Importar Datos") archivo = st.file_uploader("Sube un archivo (.csv, .xlsx, .json)", type=["csv", "xlsx", "json"]) if archivo: try: if archivo.name.endswith(".csv"): df = pd.read_csv(archivo) elif archivo.name.endswith(".xlsx"): df = pd.read_excel(archivo) elif archivo.name.endswith(".json"): df = pd.read_json(archivo) else: st.warning("Formato no soportado") st.session_state.df = df st.success("Archivo cargado correctamente") except Exception as e: st.error(f"Error: {e}")
+
+-------- VISUALIZAR Y FILTRAR --------
+
+elif opcion == "Visualizar & Filtrar": st.title("🔍 Visualizar y Filtrar Datos") if "df" in st.session_state: df = st.session_state.df st.dataframe(df)
+
+with st.expander("Filtrar por columna"):
+        columnas = st.multiselect("Selecciona columnas", df.columns)
+        if columnas:
+            st.dataframe(df[columnas])
+
+    st.markdown("""---""")
+    st.subheader("📤 Exportar")
     col1, col2 = st.columns(2)
-
     with col1:
-        docx_buffer = generar_docx(df)
-        st.download_button(
-            label="📄 Descargar informe en Word",
-            data=docx_buffer,
-            file_name="informe.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        if st.button("📄 Descargar PDF"):
+            try:
+                buffer = generar_pdf(df)
+                st.download_button("Descargar PDF", buffer, file_name="reporte.pdf")
+            except Exception as e:
+                st.error(f"Error al generar PDF: {e}")
 
     with col2:
-        pdf_buffer = generar_pdf(df)
-        st.download_button(
-            label="🧾 Descargar informe en PDF",
-            data=pdf_buffer,
-            file_name="informe.pdf",
-            mime="application/pdf"
-                )
+        if st.button("📝 Descargar Word"):
+            try:
+                buffer = generar_word(df)
+                st.download_button("Descargar Word", buffer, file_name="reporte.docx")
+            except Exception as e:
+                st.error(f"Error al generar Word: {e}")
+else:
+    st.warning("Primero importa un archivo")
+
+-------- REPORTES --------
+
+elif opcion == "Reportes": st.title("📑 Generador de Reportes") st.info("Esta sección está en desarrollo para incluir plantillas predefinidas de reportes técnicos y comparativos.")
+
+-------- MAPA --------
+
+elif opcion == "Mapa de Estaciones": st.title("🗺️ Mapa de Estaciones") st.info("Módulo en construcción para integrar datos geoespaciales y estaciones climáticas")
+
+-------- BITÁCORAS --------
+
+elif opcion == "Bitácoras" and rol != "Técnico de Campo": st.title("📝 Registro de Bitácoras") st.text_area("Describe tu observación de campo") st.button("Guardar Bitácora")
+
+-------- ADMINISTRACION --------
+
+elif opcion == "Administración" and rol == "Administrador": st.title("🔐 Panel de Administración") st.info("Desde aquí podrás gestionar usuarios, configuraciones del sistema y más.")
+
