@@ -30,7 +30,7 @@ def login():
 
     with col_login_img:
         st.image("https://images.unsplash.com/photo-1549740449-74e2d3b2c6a2?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
-                 caption="Monitoreo Inteligente del Clima", use_container_width=True) # ¡ACTUALIZADO AQUÍ!
+                 caption="Monitoreo Inteligente del Clima", use_container_width=True)
         st.markdown("<p style='text-align: center; font-style: italic; color: grey;'>Una aplicación moderna para el análisis hidrometeorológico.</p>", unsafe_allow_html=True)
 
 
@@ -171,5 +171,181 @@ def admin_panel():
             st.session_state.df_cargado = None
             st.warning("Aún no hay datos cargados. Por favor, sube un archivo CSV para empezar a analizar.")
         else:
-            with st.spinner("Cargando y procesando datos...
-        
+            with st.spinner("Cargando y procesando datos..."): # Cadena de texto cerrada
+                try:
+                    df = pd.read_csv(uploaded_file)
+                    st.success("¡CSV cargado exitosamente! 🎉")
+
+                    fecha_col_candidatas = [col for col in df.columns if 'fecha' in col.lower() or 'date' in col.lower()]
+                    
+                    df_copy = df.copy()
+
+                    if fecha_col_candidatas:
+                        for col_name in fecha_col_candidatas:
+                            try:
+                                df_copy[col_name] = pd.to_datetime(df_copy[col_name], errors='coerce')
+                                if not df_copy[col_name].isna().all():
+                                    df_copy.set_index(col_name, inplace=True)
+                                    st.info(f"Columna '{col_name}' detectada y establecida como índice de tiempo. ✅")
+                                    break
+                            except Exception:
+                                pass
+                    
+                    if not isinstance(df_copy.index, pd.DatetimeIndex):
+                         st.info("No se encontró una columna de fecha/hora automática.")
+                         if st.checkbox("¿Tu archivo tiene una columna de fecha/hora para el índice?"):
+                            date_column_options = [col for col in df.columns if df[col].dtype == 'object']
+                            if date_column_options:
+                                date_column = st.selectbox("Selecciona la columna de fecha/hora:", options=date_column_options)
+                                if date_column:
+                                    try:
+                                        df_copy[date_column] = pd.to_datetime(df_copy[date_column], errors='coerce')
+                                        if not df_copy[date_column].isna().all():
+                                            df_copy.set_index(date_column, inplace=True)
+                                            st.success(f"Columna '{date_column}' establecida como índice de tiempo. ✅")
+                                        else:
+                                            st.warning(f"La columna '{date_column}' no pudo convertirse a fecha/hora. Asegúrate del formato.")
+                                    except Exception as e:
+                                        st.error(f"Error al convertir la columna '{date_column}' a formato de fecha/hora: {e}")
+                            else:
+                                st.warning("No hay columnas de texto que puedan ser fechas. Asegúrate del formato.")
+
+                        st.subheader("📋 Vista Previa de los Datos Cargados")
+                        st.dataframe(df_copy)
+                        st.session_state.df_cargado = df_copy
+
+                    except Exception as e:
+                        st.error(f"¡Oops! Parece que hubo un error al leer tu archivo CSV: {e} 💔")
+                        st.info("Por favor, verifica que el archivo es un CSV válido y no está corrupto. Intenta con otro archivo.")
+                        st.session_state.df_cargado = None
+
+    # --- Acceso al DataFrame cargado (o vacío si no hay) ---
+    df_actual = st.session_state.df_cargado
+
+    with tab_analisis:
+        st.header("Exploración y Visualización de Datos")
+        st.info("Usa estas herramientas para interactuar con tus datos cargados y generar visualizaciones dinámicas.")
+
+        if df_actual is not None and not df_actual.empty:
+            
+            st.subheader("🎨 Configura tu Gráfico Interactivo")
+            col_graph_type, col_x_axis, col_y_axis = st.columns(3)
+
+            with col_graph_type:
+                graph_type = st.selectbox(
+                    "Selecciona el Tipo de Gráfico:",
+                    options=["Líneas", "Dispersión", "Barras", "Histograma", "Caja", "Correlación"],
+                    help="Elige la representación visual que mejor se adapte a tu análisis."
+                )
+            
+            numeric_cols = df_actual.select_dtypes(include=['number']).columns.tolist()
+            categorical_cols = df_actual.select_dtypes(include=['object', 'category']).columns.tolist()
+            
+            if isinstance(df_actual.index, pd.DatetimeIndex):
+                index_name = df_actual.index.name if df_actual.index.name else 'Fecha/Índice'
+                numeric_cols.insert(0, index_name)
+            
+            if graph_type == "Correlación":
+                with col_x_axis:
+                    st.empty()
+                with col_y_axis:
+                    st.empty()
+                if not numeric_cols:
+                    st.warning("No hay columnas numéricas para generar la matriz de correlación.")
+                elif len(numeric_cols) < 2:
+                     st.info("Necesitas al menos dos columnas numéricas para ver la correlación.")
+                else:
+                    st.subheader("📊 Matriz de Correlación")
+                    try:
+                        cols_for_corr = [col for col in numeric_cols if col != index_name if pd.api.types.is_numeric_dtype(df_actual[col])]
+                        if cols_for_corr:
+                            fig_corr = px.imshow(df_actual[cols_for_corr].corr(), text_auto=True, color_continuous_scale=px.colors.sequential.Viridis,
+                                                title="Relación entre Variables Numéricas")
+                            st.plotly_chart(fig_corr, use_container_width=True)
+                        else:
+                            st.info("No hay columnas numéricas adecuadas para calcular la correlación.")
+
+                    except Exception as e:
+                        st.error(f"Error al generar el gráfico de correlación: {e}")
+
+            elif graph_type in ["Líneas", "Dispersión", "Barras", "Histograma", "Caja"]:
+                with col_x_axis:
+                    x_axis = st.selectbox("Eje X:", options=df_actual.columns.tolist() + ([df_actual.index.name] if isinstance(df_actual.index, pd.DatetimeIndex) and df_actual.index.name else []), key="x_axis_select")
+                with col_y_axis:
+                    y_axis_options = [col for col in df_actual.columns.tolist() if col != x_axis and pd.api.types.is_numeric_dtype(df_actual[col])]
+                    y_axis = st.selectbox("Eje Y:", options=y_axis_options, key="y_axis_select")
+
+                if x_axis and y_axis:
+                    try:
+                        plot_df = df_actual.reset_index() if isinstance(df_actual.index, pd.DatetimeIndex) else df_actual.copy()
+                        
+                        if graph_type == "Líneas":
+                            fig = px.line(plot_df, x=x_axis, y=y_axis, title=f"Tendencia de {y_axis} vs {x_axis}")
+                        elif graph_type == "Dispersión":
+                            fig = px.scatter(plot_df, x=x_axis, y=y_axis, title=f"Dispersión de {y_axis} vs {x_axis}")
+                        elif graph_type == "Barras":
+                            fig = px.bar(plot_df, x=x_axis, y=y_axis, title=f"Barras de {y_axis} por {x_axis}")
+                        elif graph_type == "Histograma":
+                            fig = px.histogram(plot_df, x=x_axis, title=f"Distribución de {x_axis}", marginal="rug")
+                        elif graph_type == "Caja":
+                            fig = px.box(plot_df, x=x_axis, y=y_axis, title=f"Distribución en Caja de {y_axis} por {x_axis}")
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"No se pudo generar el gráfico de {graph_type}. Asegúrate de seleccionar columnas apropiadas. Error: {e}")
+                else:
+                    st.info("Selecciona las columnas para el eje X y Y para generar el gráfico.")
+            else:
+                st.info("Selecciona un tipo de gráfico para comenzar la visualización.")
+
+        else:
+            st.info("Carga un archivo CSV en la pestaña 'Cargar Datos' para visualizar aquí.")
+
+    with tab_exportacion:
+        st.header("Generar y Exportar Reportes")
+        st.info("Aquí puedes descargar tus datos analizados en diferentes formatos de reporte.")
+
+        if df_actual is not None and not df_actual.empty:
+            st.subheader("Reportes Generados")
+            col_pdf, col_word = st.columns(2)
+
+            with col_pdf:
+                with st.spinner("Generando PDF..."):
+                    pdf_data = generar_pdf(df_actual)
+                st.download_button(
+                    label="📄 Descargar Reporte PDF",
+                    data=pdf_data,
+                    file_name="reporte_hidromet.pdf",
+                    mime="application/pdf",
+                    help="Descarga un informe detallado de tus datos en formato PDF."
+                )
+            
+            with col_word:
+                with st.spinner("Generando Word..."):
+                    word_data = generar_word(df_actual)
+                st.download_button(
+                    label="📝 Descargar Reporte Word",
+                    data=word_data,
+                    file_name="reporte_hidromet.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    help="Descarga tus datos en un documento de Word para edición."
+                )
+        else:
+            st.info("No hay datos cargados para generar reportes. Carga un CSV primero.")
+
+# ----------------- Inicialización de Session State -----------------
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+    st.session_state.usuario = ""
+if 'df_cargado' not in st.session_state:
+    st.session_state.df_cargado = None
+
+# ----------------- Main Application Flow -----------------
+def main():
+    if st.session_state.autenticado:
+        admin_panel()
+    else:
+        login()
+
+main()
+    
