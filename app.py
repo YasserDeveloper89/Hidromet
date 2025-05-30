@@ -1,145 +1,150 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+from datetime import datetime
 from io import BytesIO
 from docx import Document
 from fpdf import FPDF
-import plotly.graph_objects as go
-from datetime import datetime
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# --------------------------
-# CONFIGURACIÓN INICIAL
-# --------------------------
-st.set_page_config(page_title="HydroClima PRO", layout="wide")
+# ------------------------- CONFIGURACIÓN DE LA PÁGINA -------------------------
+st.set_page_config(page_title="HydroClima Ultra PRO", layout="wide")
 
-# --------------------------
-# CREDENCIALES DE USUARIO
-# --------------------------
-USERS = {
-    "admin": {"password": "admin123", "role": "admin"},
-    "analista": {"password": "analista123", "role": "analyst"},
-    "tecnico": {"password": "tecnico123", "role": "technician"}
+# ------------------------- SESIÓN DE USUARIO -------------------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.session_state.rol = ""
+
+# ------------------------- BASE DE USUARIOS -------------------------
+users_db = {
+    "admin": {"password": "admin123", "rol": "admin"},
+    "tecnico": {"password": "tec123", "rol": "tecnico"},
+    "analista": {"password": "ana123", "rol": "analista"},
 }
 
-# --------------------------
-# FUNCIONES DE SESIÓN
-# --------------------------
+# ------------------------- FUNCIONES AUXILIARES -------------------------
 def login():
-    st.title("🔒 Iniciar sesión")
-    st.markdown("Bienvenido a HydroClima PRO. Introduce tus credenciales para continuar.")
+    st.title("🔐 Acceso a HydroClima PRO")
+    st.write("Por favor, introduce tus credenciales para acceder al sistema.")
+    username = st.text_input("Usuario")
+    password = st.text_input("Contraseña", type="password")
+    if st.button("Ingresar"):
+        if username in users_db and users_db[username]["password"] == password:
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.session_state.rol = users_db[username]["rol"]
+            st.experimental_rerun()
+        else:
+            st.error("Usuario o contraseña incorrectos.")
 
-    with st.form("login_form"):
-        username = st.text_input("Usuario")
-        password = st.text_input("Contraseña", type="password")
-        submitted = st.form_submit_button("Iniciar sesión")
+def logout():
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.session_state.rol = ""
+    st.experimental_rerun()
 
-        if submitted:
-            if username in USERS and USERS[username]["password"] == password:
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = username
-                st.session_state["role"] = USERS[username]["role"]
-                st.success("Login exitoso. Bienvenido, {}".format(username))
-            else:
-                st.error("Credenciales inválidas. Intenta de nuevo.")
-
-# --------------------------
-# BARRA SUPERIOR
-# --------------------------
-def top_bar():
-    st.sidebar.title("📂 Menú")
-    st.sidebar.write("**Usuario:**", st.session_state["username"])
-    st.sidebar.write("**Rol:**", st.session_state["role"])
-    if st.sidebar.button("🔚 Cerrar sesión"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.experimental_rerun()
-
-# --------------------------
-# FUNCIONES DEL ADMIN
-# --------------------------
+# ------------------------- DASHBOARDS POR ROL -------------------------
 def admin_dashboard():
-    st.header("Panel de Administrador")
-    st.markdown("Acceso completo al sistema, gestión de usuarios y más.")
+    st.sidebar.title("👑 Panel de Administración")
+    st.sidebar.button("Cerrar sesión", on_click=logout)
 
-    st.subheader("📈 Conexión con sensores en tiempo real (simulado)")
-    if st.button("📡 Obtener datos del sensor de temperatura"):
-        sensor_data = round(np.random.uniform(18, 30), 2)
-        st.success(f"🌡️ Temperatura registrada: {sensor_data} °C")
-
-    st.subheader("📊 Subida y análisis de datos")
-    uploaded_file = st.file_uploader("Sube un archivo CSV con datos meteorológicos")
+    st.title("HydroClima Ultra PRO - Panel Administrador")
+    uploaded_file = st.file_uploader("Sube un archivo CSV de sensores", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        st.session_state["data"] = df
-        st.dataframe(df)
+        st.success("Archivo cargado correctamente")
 
-        if st.button("📤 Exportar a PDF"):
-            try:
+        st.subheader("📊 Vista previa de los datos")
+        st.dataframe(df.head(), use_container_width=True)
+
+        st.subheader("📉 Análisis estadístico general")
+        st.dataframe(df.describe(), use_container_width=True)
+
+        st.subheader("📈 Gráficos avanzados")
+        columnas_numericas = df.select_dtypes(include=np.number).columns.tolist()
+        selected_col = st.selectbox("Selecciona una columna para graficar", columnas_numericas)
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(y=df[selected_col], mode='lines+markers', name=selected_col))
+        fig.update_layout(template="plotly_dark", title=f"Tendencia de {selected_col}")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("📤 Exportar informe")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Descargar informe Word"):
+                doc = Document()
+                doc.add_heading("Informe Hidrometeorológico", 0)
+                doc.add_paragraph(f"Generado por: {st.session_state.username} ({st.session_state.rol})")
+                doc.add_paragraph(f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                doc.add_paragraph("\nResumen Estadístico:")
+                for col in columnas_numericas:
+                    doc.add_paragraph(f"{col}: Media={df[col].mean():.2f}, Máx={df[col].max()}, Mín={df[col].min()}")
+                buffer = BytesIO()
+                doc.save(buffer)
+                buffer.seek(0)
+                st.download_button(
+                    label="📄 Descargar Word",
+                    data=buffer,
+                    file_name="informe.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+
+        with col2:
+            if st.button("Descargar informe PDF"):
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=12)
-                pdf.cell(200, 10, txt="Informe de Datos Meteorológicos", ln=1, align="C")
-                for col in df.columns:
-                    pdf.cell(200, 10, txt=f"{col}: {df[col].mean():.2f}", ln=1)
+                pdf.cell(200, 10, txt="Informe Hidrometeorológico", ln=True, align="C")
+                pdf.ln(10)
+                pdf.cell(200, 10, txt=f"Usuario: {st.session_state.username}", ln=True)
+                for col in columnas_numericas:
+                    stats = f"{col} - Media: {df[col].mean():.2f}, Máx: {df[col].max()}, Mín: {df[col].min()}"
+                    pdf.cell(200, 10, txt=stats, ln=True)
                 pdf_output = BytesIO()
                 pdf.output(pdf_output)
-                st.download_button("⬇️ Descargar PDF", data=pdf_output.getvalue(), file_name="informe.pdf")
-            except Exception as e:
-                st.error(f"Error al generar PDF: {e}")
+                pdf_output.seek(0)
+                st.download_button(
+                    label="📑 Descargar PDF",
+                    data=pdf_output,
+                    file_name="informe.pdf",
+                    mime="application/pdf"
+                )
 
-# --------------------------
-# FUNCIONES DEL ANALISTA
-# --------------------------
-def analyst_dashboard():
-    st.header("Panel del Analista")
-    st.markdown("Subida de archivos, análisis estadístico y visualización de datos.")
+        st.subheader("📡 Simulación de conexión a sensores")
+        st.info("Conexión establecida con sensores. Datos actualizados en tiempo real.")
+        st.code("Conectado al sensor ID_001: Temp=25.4°C, Humedad=61%", language="text")
 
-    uploaded_file = st.file_uploader("Sube un archivo CSV")
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.dataframe(df)
+        st.subheader("🧑‍💼 Gestión de usuarios (solo simulación)")
+        st.json(users_db)
 
-        st.subheader("📊 Estadísticas básicas")
-        st.write(df.describe())
+    else:
+        st.warning("Por favor, sube un archivo CSV para comenzar.")
 
-        st.subheader("📈 Visualización interactiva")
-        numeric_columns = df.select_dtypes(include=np.number).columns
-        if len(numeric_columns) >= 2:
-            x = st.selectbox("Eje X", numeric_columns)
-            y = st.selectbox("Eje Y", numeric_columns, index=1)
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df[x], y=df[y], mode='markers', marker=dict(color='orange')))
-            fig.update_layout(title=f"{y} vs {x}", template="plotly_dark")
-            st.plotly_chart(fig, use_container_width=True)
+def tecnico_dashboard():
+    st.sidebar.title("🔧 Panel Técnico")
+    st.sidebar.button("Cerrar sesión", on_click=logout)
+    st.title("Panel Técnico de Monitoreo")
+    st.write("(Funciones específicas para técnicos en campo, revisión rápida de sensores)")
 
-# --------------------------
-# FUNCIONES DEL TÉCNICO
-# --------------------------
-def technician_dashboard():
-    st.header("Panel del Técnico")
-    st.markdown("Revisión de sensores, registros recientes y diagnósticos automáticos.")
+def analista_dashboard():
+    st.sidebar.title("📈 Panel de Analista")
+    st.sidebar.button("Cerrar sesión", on_click=logout)
+    st.title("Panel de Analista de Datos")
+    st.write("(Herramientas avanzadas de interpretación, predicción e informes de datos)")
 
-    st.subheader("📟 Estado de sensores")
-    st.info("Sensor A: OK\nSensor B: OK\nSensor C: OK")
-
-    st.subheader("🔍 Diagnóstico rápido")
-    st.success("Todos los sistemas operativos dentro de los parámetros esperados.")
-
-# --------------------------
-# MAIN
-# --------------------------
-if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
-
-if not st.session_state["logged_in"]:
+# ------------------------- INICIO -------------------------
+if not st.session_state.authenticated:
     login()
 else:
-    top_bar()
-    role = st.session_state["role"]
-    if role == "admin":
+    if st.session_state.rol == "admin":
         admin_dashboard()
-    elif role == "analyst":
-        analyst_dashboard()
-    elif role == "technician":
-        technician_dashboard()
-        
+    elif st.session_state.rol == "tecnico":
+        tecnico_dashboard()
+    elif st.session_state.rol == "analista":
+        analista_dashboard()
+    
