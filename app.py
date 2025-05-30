@@ -1,107 +1,138 @@
-import streamlit as st import pandas as pd import base64 from io import BytesIO from docx import Document from fpdf import FPDF import matplotlib.pyplot as plt import numpy as np
+import streamlit as st
+import pandas as pd
+import base64
+from io import BytesIO
+from docx import Document
+from fpdf import FPDF
+import matplotlib.pyplot as plt
+import numpy as np
 
-st.set_page_config(page_title="HidroClimaPro", layout="wide")
+# ------------------------ Configuración de estilo ------------------------
+st.set_page_config(page_title="Hidromet Pro", layout="wide")
 
-st.title("🌧️ HidroClimaPro - Plataforma de Análisis Hidrometeorológico")
+# ------------------------ Modo Claro / Oscuro ------------------------
+theme_mode = st.sidebar.radio("🌗 Modo de visualización", ["Claro", "Oscuro"])
+if theme_mode == "Oscuro":
+    st.markdown(
+        """
+        <style>
+            body {
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+        </style>
+        """, unsafe_allow_html=True
+    )
 
-modo = st.sidebar.radio("Modo de visualización", ["Claro", "Oscuro"]) if modo == "Oscuro": st.markdown(""" <style> body, .reportview-container { background-color: #1e1e1e; color: #f5f5f5; } </style> """, unsafe_allow_html=True)
+# ------------------------ Título y descripción ------------------------
+st.title("🌦️ Hidromet Pro - Análisis y Gestión de Datos Climáticos")
+st.markdown("Sistema profesional para importar, visualizar, analizar y exportar informes de datos meteorológicos e hidrológicos.")
 
-uploaded_file = st.file_uploader("📤 Sube tu archivo de datos (.csv)", type="csv")
+# ------------------------ Carga de archivo ------------------------
+uploaded_file = st.file_uploader("📂 Subir archivo CSV", type=["csv"])
+if uploaded_file:
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.success("✅ Archivo cargado correctamente.")
+        st.dataframe(df)
 
-if uploaded_file: try: df = pd.read_csv(uploaded_file) st.success("✅ Archivo cargado exitosamente") st.dataframe(df, use_container_width=True)
-
-st.markdown("---")
-    st.markdown("### 📊 Análisis Avanzado de Variables")
-
-    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-
-    if numeric_cols:
-        selected_cols = st.multiselect("Selecciona variables numéricas para analizar", numeric_cols, default=numeric_cols[:2])
-
-        st.subheader("📉 Histogramas")
-        for col in selected_cols:
+        # ------------------------ Visualización de datos ------------------------
+        st.subheader("📊 Visualización de Datos")
+        column = st.selectbox("Selecciona columna para graficar", df.columns)
+        if pd.api.types.is_numeric_dtype(df[column]):
             fig, ax = plt.subplots()
-            ax.hist(df[col].dropna(), bins=20, color='skyblue', edgecolor='black')
-            ax.set_title(f"Distribución: {col}")
+            ax.plot(df[column])
+            ax.set_title(f"Evolución de {column}")
+            ax.set_xlabel("Índice")
+            ax.set_ylabel(column)
             st.pyplot(fig)
+        else:
+            st.warning("⚠️ La columna seleccionada no contiene datos numéricos.")
 
-        st.subheader("📦 Boxplots (Valores atípicos)")
-        fig, ax = plt.subplots()
-        df[selected_cols].plot(kind='box', ax=ax)
-        st.pyplot(fig)
+        # ------------------------ Análisis de datos ------------------------
+        st.subheader("📈 Análisis Estadístico")
+        numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+        if numeric_columns:
+            analysis_column = st.selectbox("Selecciona una columna numérica", numeric_columns)
+            stats = df[analysis_column].describe()
+            st.write(stats)
+            fig_hist, ax_hist = plt.subplots()
+            ax_hist.hist(df[analysis_column], bins=20, color='skyblue', edgecolor='black')
+            ax_hist.set_title(f"Distribución de {analysis_column}")
+            st.pyplot(fig_hist)
+        else:
+            st.info("No se encontraron columnas numéricas para análisis.")
 
-        if len(selected_cols) >= 2:
-            st.subheader("🔗 Matriz de Correlación")
-            corr = df[selected_cols].corr()
-            fig, ax = plt.subplots()
-            im = ax.imshow(corr, cmap='coolwarm', vmin=-1, vmax=1)
-            ax.set_xticks(np.arange(len(selected_cols)))
-            ax.set_yticks(np.arange(len(selected_cols)))
-            ax.set_xticklabels(selected_cols, rotation=45)
-            ax.set_yticklabels(selected_cols)
-            fig.colorbar(im)
-            st.pyplot(fig)
+        # ------------------------ Informe ------------------------
+        st.subheader("📝 Generar Informe")
+        resumen = st.text_area("Resumen o comentarios del informe")
 
-        st.subheader("📊 Comparador Multivariable")
-        fig, ax = plt.subplots()
-        df[selected_cols].plot(ax=ax)
-        st.pyplot(fig)
-    else:
-        st.warning("No se encontraron columnas numéricas para análisis.")
-
-    st.markdown("---")
-    st.markdown("### 📝 Generar Informe")
-    resumen = st.text_area("Escribe tu resumen del informe")
-
-    if st.button("📥 Exportar Informe PDF"):
-        try:
+        def generar_pdf(df, resumen):
             pdf = FPDF()
             pdf.add_page()
+            pdf.set_font("Arial", "B", 14)
+            pdf.cell(200, 10, "Informe de Datos Hidrometeorológicos", ln=True, align='C')
             pdf.set_font("Arial", size=12)
-            pdf.cell(200, 10, txt="Informe Hidrometeorológico", ln=True, align="C")
-            pdf.ln(10)
             pdf.multi_cell(0, 10, resumen)
-            pdf.ln(10)
+            pdf.ln()
 
-            for i in range(len(df)):
-                row = ", ".join(f"{col}: {df[col][i]}" for col in df.columns)
-                pdf.multi_cell(0, 10, row)
+            pdf.set_font("Arial", "B", 12)
+            for column in df.columns:
+                pdf.cell(40, 10, str(column), border=1)
+            pdf.ln()
 
-            pdf_output = BytesIO()
-            pdf.output(pdf_output)
-            pdf_output.seek(0)
+            pdf.set_font("Arial", size=10)
+            for _, row in df.iterrows():
+                for item in row:
+                    pdf.cell(40, 10, str(item), border=1)
+                pdf.ln()
 
-            b64_pdf = base64.b64encode(pdf_output.read()).decode()
-            href = f'<a href="data:application/octet-stream;base64,{b64_pdf}" download="informe.pdf">📄 Descargar PDF</a>'
-            st.markdown(href, unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Ocurrió un error al procesar el archivo: {e}")
+            pdf_buffer = BytesIO()
+            pdf.output(pdf_buffer)
+            return pdf_buffer.getvalue()
 
-    if st.button("📝 Exportar Informe Word"):
-        try:
+        def generar_word(df, resumen):
             doc = Document()
-            doc.add_heading("Informe Hidrometeorológico", 0)
+            doc.add_heading("Informe de Datos Hidrometeorológicos", 0)
             doc.add_paragraph(resumen)
-            doc.add_paragraph("\nDatos:")
+
             table = doc.add_table(rows=1, cols=len(df.columns))
             hdr_cells = table.rows[0].cells
             for i, col in enumerate(df.columns):
-                hdr_cells[i].text = col
-            for i in range(len(df)):
+                hdr_cells[i].text = str(col)
+
+            for _, row in df.iterrows():
                 row_cells = table.add_row().cells
-                for j, col in enumerate(df.columns):
-                    row_cells[j].text = str(df[col][i])
+                for i, item in enumerate(row):
+                    row_cells[i].text = str(item)
 
-            word_output = BytesIO()
-            doc.save(word_output)
-            word_output.seek(0)
+            doc_buffer = BytesIO()
+            doc.save(doc_buffer)
+            return doc_buffer.getvalue()
 
-            b64_word = base64.b64encode(word_output.read()).decode()
-            href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64_word}" download="informe.docx">📝 Descargar Word</a>'
-            st.markdown(href, unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Ocurrió un error al procesar el archivo: {e}")
+        col1, col2 = st.columns(2)
 
-except Exception as e:
-    st.error(f"Error al leer el archivo: {e}")
+        with col1:
+            if st.button("📥 Exportar a PDF"):
+                try:
+                    pdf_data = generar_pdf(df, resumen)
+                    b64_pdf = base64.b64encode(pdf_data).decode()
+                    href = f'<a href="data:application/octet-stream;base64,{b64_pdf}" download="informe.pdf">Haz clic para descargar el PDF</a>'
+                    st.markdown(href, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Ocurrió un error al procesar el PDF: {e}")
 
+        with col2:
+            if st.button("📝 Exportar a Word"):
+                try:
+                    word_data = generar_word(df, resumen)
+                    b64_word = base64.b64encode(word_data).decode()
+                    href = f'<a href="data:application/octet-stream;base64,{b64_word}" download="informe.docx">Haz clic para descargar el Word</a>'
+                    st.markdown(href, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Ocurrió un error al procesar el Word: {e}")
+
+    except Exception as e:
+        st.error(f"❌ Error al procesar el archivo: {e}")
+else:
+    st.info("🔄 Esperando que subas un archivo CSV para comenzar.")
