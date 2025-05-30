@@ -23,8 +23,8 @@ def login():
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
             st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
-            # Ya no necesitamos st.experimental_rerun() aquí.
-            # Streamlit detecta el cambio en st.session_state y redibuja.
+            # Forzar una re-ejecución para que main() cargue admin_panel()
+            st.rerun() # O st.experimental_rerun() si st.rerun() no funciona en tu versión
         else:
             st.error("❌ Usuario o contraseña incorrectos")
 
@@ -32,8 +32,8 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-    # Tampoco necesitamos st.experimental_rerun() aquí.
-    # Streamlit detecta el cambio en st.session_state y redibuja.
+    # Forzar una re-ejecución para que main() cargue el login nuevamente
+    st.rerun() # O st.experimental_rerun() si st.rerun() no funciona en tu versión
 
 # ----------------- Generar PDF -----------------
 def generar_pdf(df):
@@ -44,25 +44,25 @@ def generar_pdf(df):
     pdf.ln()
 
     # Añadir encabezados de la tabla al PDF
-    col_width = pdf.w / (len(df.columns) + 1) # Calcula el ancho de columna
+    # Asegúrate de que el ancho de la columna sea suficiente para los encabezados y datos
+    col_width = pdf.w / (len(df.columns) + 1) # +1 para el índice
     for col in df.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
     # Añadir filas de datos al PDF
     for index, row in df.iterrows():
-        # Formatear la fecha para el índice
+        # Formatear la fecha para el índice si es un Timestamp
         if isinstance(index, pd.Timestamp):
             pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
         else:
-            pdf.cell(col_width, 10, str(index), border=1)
-
+            pdf.cell(col_width, 10, str(index), border=1) # Para otros tipos de índice
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
 
     buffer = BytesIO()
-    # CAMBIO CRÍTICO AQUÍ: 'output' para escribir al buffer directamente
+    # CAMBIO CRÍTICO: 'output' para escribir al buffer directamente
     pdf.output(buffer, 'S') # 'S' para cadena/bytes en memoria
     pdf_data = buffer.getvalue()
     return pdf_data
@@ -86,6 +86,8 @@ def generar_word(df):
 # ----------------- Panel de Administración -----------------
 def admin_panel():
     st.title("🛠️ Panel de Administración")
+    st.write(f"Bienvenido, {st.session_state.usuario}") # Para confirmar que el usuario está logeado
+
     df = pd.DataFrame({
         "fecha": pd.to_datetime(pd.date_range(start="2023-01-01", periods=10)),
         "lluvia": [23, 12, 45, 67, 34, 22, 11, 56, 78, 21],
@@ -101,11 +103,28 @@ def admin_panel():
     fig = px.imshow(df.corr(numeric_only=True), text_auto=True)
     st.plotly_chart(fig)
 
+    st.subheader("📊 Gráfico de Dispersión (ejemplo de otra herramienta)")
+    fig_scatter = px.scatter(df, x=df.index, y="temperatura", size="lluvia", color="humedad",
+                             hover_name=df.index.strftime('%Y-%m-%d'))
+    st.plotly_chart(fig_scatter)
+
+    st.subheader("📊 Histograma de Lluvia (ejemplo de otra herramienta)")
+    fig_hist = px.histogram(df, x="lluvia", marginal="rug", # rug adds a rug plot
+                           hover_data=df.columns)
+    st.plotly_chart(fig_hist)
+
+
+    st.subheader("Tabla de Datos (ejemplo de otra herramienta)")
+    st.dataframe(df) # Muestra la tabla de datos
+
+    # Aquí puedes añadir más herramientas visuales o funcionales
+    st.subheader("Otras Funcionalidades")
+    st.info("Aquí irían otras herramientas o visualizaciones personalizadas.")
+
     st.subheader("📤 Exportar Datos")
     pdf_data = generar_pdf(df)
     word_data = generar_word(df)
 
-    # Botones de descarga de PDF
     st.download_button(
         label="📄 Descargar PDF",
         data=pdf_data,
@@ -113,7 +132,6 @@ def admin_panel():
         mime="application/pdf"
     )
 
-    # Botones de descarga de Word
     st.download_button(
         label="📝 Descargar Word",
         data=word_data,
@@ -137,4 +155,3 @@ def main():
         login()
 
 main()
-    
