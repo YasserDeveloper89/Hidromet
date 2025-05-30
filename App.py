@@ -6,6 +6,9 @@ import base64
 from io import BytesIO
 from fpdf import FPDF
 from docx import Document
+from docx.shared import Inches # Para ajustar tamaños en Word
+from docx.enum.text import WD_ALIGN_PARAGRAPH # Para alinear texto en Word
+
 
 # --- Configuración de la Página ---
 st.set_page_config(
@@ -29,7 +32,9 @@ def login():
     col_login_img, col_login_form = st.columns([1, 1])
 
     with col_login_img:
-        st.image("https://images.unsplash.com/photo-1549740449-74e2d3b2c6a2?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+        # --- USANDO IMAGEN LOCAL! ---
+        # Asegúrate de que 'login_background.jpg' esté en la misma carpeta que App.py
+        st.image("login_background.jpg",
                  caption="Monitoreo Inteligente del Clima", use_container_width=True)
         st.markdown("<p style='text-align: center; font-style: italic; color: grey;'>Una aplicación moderna para el análisis hidrometeorológico.</p>", unsafe_allow_html=True)
 
@@ -55,7 +60,7 @@ def logout():
     st.session_state.df_cargado = None
     st.rerun()
 
-# ----------------- Generar PDF -----------------
+# ----------------- Generar PDF (MEJORADA) -----------------
 def generar_pdf(df_to_export):
     pdf = FPDF()
     pdf.add_page()
@@ -63,39 +68,90 @@ def generar_pdf(df_to_export):
     pdf.cell(200, 10, txt="Reporte de Datos Hidrometeorológicos", ln=True, align="C")
     pdf.ln(10)
 
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 10, txt="Resumen del DataFrame:", ln=True)
+    # --- Sección de Resumen General ---
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, txt="1. Resumen General del Conjunto de Datos", ln=True)
     pdf.set_font("Arial", '', 10)
-    for col in df_to_export.columns:
-        pdf.cell(0, 7, txt=f"- {col}: {df_to_export[col].dtype}", ln=True)
+    pdf.cell(0, 7, txt=f"  - Número total de filas: {len(df_to_export)}", ln=True)
+    pdf.cell(0, 7, txt=f"  - Número total de columnas: {len(df_to_export.columns)}", ln=True)
+    
+    if isinstance(df_to_export.index, pd.DatetimeIndex):
+        pdf.cell(0, 7, txt=f"  - Período de datos: {df_to_export.index.min().strftime('%Y-%m-%d')} a {df_to_export.index.max().strftime('%Y-%m-%d')}", ln=True)
+    
     pdf.ln(5)
 
+    # --- Sección de Resumen por Columna (Tipos de Datos y Valores Únicos) ---
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt="Datos Detallados:", ln=True, align="C")
+    pdf.cell(0, 10, txt="2. Detalles de las Columnas", ln=True)
+    pdf.set_font("Arial", '', 9) # Fuente más pequeña para detalles
+    for col in df_to_export.columns:
+        pdf.cell(0, 6, txt=f"  - '{col}':", ln=True)
+        pdf.cell(0, 6, txt=f"    - Tipo de dato: {df_to_export[col].dtype}", ln=True)
+        if df_to_export[col].dtype == 'object' or df_to_export[col].nunique() < 20: # Para columnas categóricas o con pocos valores únicos
+            pdf.cell(0, 6, txt=f"    - Valores únicos: {df_to_export[col].nunique()}", ln=True)
+        
+        # Si es numérica, añadir estadísticas descriptivas
+        if pd.api.types.is_numeric_dtype(df_to_export[col]):
+            desc_stats = df_to_export[col].describe()
+            pdf.cell(0, 6, txt=f"    - Media: {desc_stats['mean']:.2f}", ln=True)
+            pdf.cell(0, 6, txt=f"    - Desviación Estándar: {desc_stats['std']:.2f}", ln=True)
+            pdf.cell(0, 6, txt=f"    - Mínimo: {desc_stats['min']:.2f}", ln=True)
+            pdf.cell(0, 6, txt=f"    - Máximo: {desc_stats['max']:.2f}", ln=True)
+        pdf.ln(2) # Pequeño espacio entre columnas
+
+    pdf.ln(5) # Espacio antes de la tabla
+
+    # --- Sección de Datos Detallados (Tabla) ---
+    pdf.add_page() # Nueva página para la tabla si es muy grande
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(200, 10, txt="3. Datos Detallados del Conjunto", ln=True, align="C")
     pdf.ln(5)
 
     df_str = df_to_export.astype(str)
 
+    # Calcular ancho de columnas dinámicamente para la tabla
     num_cols_pdf = len(df_str.columns)
-    if df_str.index.name is not None:
-        num_cols_pdf += 1
+    has_index_name = df_str.index.name is not None and df_str.index.name != '' # Check if index has a meaningful name
+    if has_index_name or isinstance(df_to_export.index, pd.DatetimeIndex): # Always show date index
+        num_cols_pdf += 1 
+        
+    # Ancho aproximado de la página para la tabla, ajustado para evitar desbordamientos
+    page_width = pdf.w - 2*pdf.l_margin
+    col_width = page_width / num_cols_pdf
+    
+    # Si las columnas son muchas, ajustar el tamaño de fuente o dividir
+    if num_cols_pdf > 6:
+        pdf.set_font("Arial", 'B', 7) # Fuente más pequeña para encabezados
+    else:
+        pdf.set_font("Arial", 'B', 9)
 
-    col_width = pdf.w / (num_cols_pdf + 1)
-
-    pdf.set_font("Arial", 'B', 10)
-    if df_str.index.name is not None:
-        pdf.cell(col_width, 10, str(df_str.index.name if df_str.index.name else "Índice"), border=1)
+    # Encabezados de la tabla
+    if has_index_name:
+        pdf.cell(col_width, 10, str(df_to_export.index.name), border=1, align='C')
+    elif isinstance(df_to_export.index, pd.DatetimeIndex):
+        pdf.cell(col_width, 10, "Fecha/Hora", border=1, align='C') # Generic name for datetime index
+    
     for col in df_str.columns:
-        pdf.cell(col_width, 10, str(col), border=1)
+        pdf.cell(col_width, 10, str(col), border=1, align='C')
     pdf.ln()
 
-    pdf.set_font("Arial", '', 8)
-    for index, row in df_str.iterrows():
-        if isinstance(index, pd.Timestamp):
-            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
-        else:
-            pdf.cell(col_width, 10, str(index), border=1)
+    # Filas de datos
+    if num_cols_pdf > 6:
+        pdf.set_font("Arial", '', 6) # Fuente más pequeña para datos
+    else:
+        pdf.set_font("Arial", '', 7)
 
+    for index, row in df_str.iterrows():
+        # Valor del índice
+        if has_index_name:
+            if isinstance(index, pd.Timestamp):
+                pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d %H:%M')), border=1)
+            else:
+                pdf.cell(col_width, 10, str(index), border=1)
+        elif isinstance(df_to_export.index, pd.DatetimeIndex): # If index is datetime but no specific name
+            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d %H:%M')), border=1)
+        
+        # Valores de las columnas
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
@@ -105,48 +161,89 @@ def generar_pdf(df_to_export):
     pdf_data = buffer.getvalue()
     return pdf_data
 
-# ----------------- Generar Word -----------------
+# ----------------- Generar Word (MEJORADA) -----------------
 def generar_word(df_to_export):
     doc = Document()
+    
+    # Título del Reporte
     doc.add_heading("Reporte de Datos Hidrometeorológicos", 0)
-    doc.add_paragraph(f"Fecha del Reporte: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}")
+    doc.add_paragraph(f"Generado el: {pd.Timestamp.now().strftime('%d-%m-%Y %H:%M')}")
     doc.add_page_break()
 
-    doc.add_heading("Resumen de Datos", level=1)
-    doc.add_paragraph(f"Número de filas: {len(df_to_export)}")
-    doc.add_paragraph(f"Número de columnas: {len(df_to_export.columns)}")
-    doc.add_paragraph("Tipos de datos por columna:")
-    for col, dtype in df_to_export.dtypes.items():
-        doc.add_paragraph(f"- {col}: {dtype}")
+    # --- Sección 1: Resumen General del Conjunto de Datos ---
+    doc.add_heading("1. Resumen General del Conjunto de Datos", level=1)
+    doc.add_paragraph(f"Número total de filas: {len(df_to_export)}")
+    doc.add_paragraph(f"Número total de columnas: {len(df_to_export.columns)}")
+    
+    if isinstance(df_to_export.index, pd.DatetimeIndex):
+        doc.add_paragraph(f"Período de datos: {df_to_export.index.min().strftime('%Y-%m-%d')} a {df_to_export.index.max().strftime('%Y-%m-%d')}")
+    
+    doc.add_paragraph("") # Espacio
+
+    # --- Sección 2: Detalles de las Columnas ---
+    doc.add_heading("2. Detalles de las Columnas", level=1)
+    for col in df_to_export.columns:
+        doc.add_paragraph(f"• **'{col}'**") # Usamos negritas para el nombre de la columna
+        doc.add_paragraph(f"  - Tipo de dato: {df_to_export[col].dtype}")
+        if df_to_export[col].dtype == 'object' or df_to_export[col].nunique() < 20:
+            doc.add_paragraph(f"  - Valores únicos: {df_to_export[col].nunique()}")
+        
+        if pd.api.types.is_numeric_dtype(df_to_export[col]):
+            desc_stats = df_to_export[col].describe()
+            doc.add_paragraph(f"  - Media: {desc_stats['mean']:.2f}")
+            doc.add_paragraph(f"  - Desviación Estándar: {desc_stats['std']:.2f}")
+            doc.add_paragraph(f"  - Mínimo: {desc_stats['min']:.2f}")
+            doc.add_paragraph(f"  - Máximo: {desc_stats['max']:.2f}")
+        doc.add_paragraph("") # Espacio
+
     doc.add_page_break()
 
-    doc.add_heading("Datos Detallados", level=1)
-    table = doc.add_table(rows=1, cols=len(df_to_export.columns) + (1 if df_to_export.index.name else 0))
-    table.style = 'Table Grid'
+    # --- Sección 3: Datos Detallados del Conjunto (Tabla) ---
+    doc.add_heading("3. Datos Detallados del Conjunto", level=1)
+    
+    # Calcular el número de columnas para la tabla de Word
+    num_cols_word_table = len(df_to_export.columns)
+    has_index_name = df_to_export.index.name is not None and df_to_export.index.name != ''
+    if has_index_name or isinstance(df_to_export.index, pd.DatetimeIndex):
+        num_cols_word_table += 1
 
+    table = doc.add_table(rows=1, cols=num_cols_word_table)
+    table.style = 'Table Grid' # Estilo de tabla con bordes
+
+    # Encabezados de la tabla
     hdr_cells = table.rows[0].cells
     idx = 0
-    if df_to_export.index.name:
-        hdr_cells[idx].text = df_to_export.index.name if df_to_export.index.name else "Índice"
+    if has_index_name:
+        hdr_cells[idx].text = df_to_export.index.name
         idx += 1
+    elif isinstance(df_to_export.index, pd.DatetimeIndex):
+        hdr_cells[idx].text = "Fecha/Hora"
+        idx += 1
+
     for i, col in enumerate(df_to_export.columns):
         hdr_cells[idx + i].text = col
-
+        
+    # Añadir filas de datos
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
         idx = 0
-        if df_to_export.index.name:
+        if has_index_name:
             if isinstance(index, pd.Timestamp):
-                row_cells[idx].text = str(index.strftime('%Y-%m-%d'))
+                row_cells[idx].text = str(index.strftime('%Y-%m-%d %H:%M'))
             else:
                 row_cells[idx].text = str(index)
             idx += 1
+        elif isinstance(df_to_export.index, pd.DatetimeIndex):
+            row_cells[idx].text = str(index.strftime('%Y-%m-%d %H:%M'))
+            idx += 1
+
         for i, col_name in enumerate(df_to_export.columns):
             row_cells[idx + i].text = str(row[col_name])
             
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
 
 # ----------------- Panel de Administración -----------------
 def admin_panel():
@@ -172,7 +269,7 @@ def admin_panel():
             st.warning("Aún no hay datos cargados. Por favor, sube un archivo CSV para empezar a analizar.")
         else:
             with st.spinner("Cargando y procesando datos..."):
-                try: # Start of the main try block for file processing
+                try: 
                     df = pd.read_csv(uploaded_file)
                     st.success("¡CSV cargado exitosamente! 🎉")
 
@@ -188,7 +285,7 @@ def admin_panel():
                                     df_copy.set_index(col_name, inplace=True)
                                     st.info(f"Columna '{col_name}' detectada y establecida como índice de tiempo. ✅")
                                     break
-                            except Exception: # Inner except for date conversion
+                            except Exception: 
                                 pass
                     
                     if not isinstance(df_copy.index, pd.DatetimeIndex):
@@ -205,7 +302,7 @@ def admin_panel():
                                             st.success(f"Columna '{date_column}' establecida como índice de tiempo. ✅")
                                         else:
                                             st.warning(f"La columna '{date_column}' no pudo convertirse a fecha/hora. Asegúrate del formato.")
-                                    except Exception as e: # Inner except for manual date conversion
+                                    except Exception as e: 
                                         st.error(f"Error al convertir la columna '{date_column}' a formato de fecha/hora: {e}")
                             else:
                                 st.warning("No hay columnas de texto que puedan ser fechas. Asegúrate del formato.")
@@ -214,7 +311,7 @@ def admin_panel():
                     st.dataframe(df_copy)
                     st.session_state.df_cargado = df_copy
 
-                except Exception as e: # This is the outer except block for file reading and initial processing
+                except Exception as e: 
                     st.error(f"¡Oops! Parece que hubo un error al leer tu archivo CSV: {e} 💔")
                     st.info("Por favor, verifica que el archivo es un CSV válido y no está corrupto. Intenta con otro archivo.")
                     st.session_state.df_cargado = None
@@ -269,12 +366,11 @@ def admin_panel():
 
             elif graph_type in ["Líneas", "Dispersión", "Barras", "Histograma", "Caja"]:
                 with col_x_axis:
-                    # If the index is a DatetimeIndex and has a name, include it as an option
                     x_axis_options = df_actual.columns.tolist()
                     if isinstance(df_actual.index, pd.DatetimeIndex) and df_actual.index.name:
                         x_axis_options.insert(0, df_actual.index.name)
-                    elif isinstance(df_actual.index, pd.DatetimeIndex): # If index is datetime but no name
-                        x_axis_options.insert(0, 'index') # Use 'index' as placeholder
+                    elif isinstance(df_actual.index, pd.DatetimeIndex):
+                        x_axis_options.insert(0, 'index')
 
                     x_axis = st.selectbox("Eje X:", options=x_axis_options, key="x_axis_select")
                 with col_y_axis:
@@ -283,12 +379,11 @@ def admin_panel():
 
                 if x_axis and y_axis:
                     try:
-                        # Prepare df for Plotly, including the index as a column if selected or if it's a DatetimeIndex
                         plot_df = df_actual.copy()
                         if isinstance(df_actual.index, pd.DatetimeIndex) and x_axis == df_actual.index.name:
                             plot_df = plot_df.reset_index()
                         elif isinstance(df_actual.index, pd.DatetimeIndex) and x_axis == 'index':
-                             plot_df = plot_df.reset_index(names=['index']) # Rename for consistent plotting
+                             plot_df = plot_df.reset_index(names=['index'])
                         
                         if graph_type == "Líneas":
                             fig = px.line(plot_df, x=x_axis, y=y_axis, title=f"Tendencia de {y_axis} vs {x_axis}")
@@ -314,49 +409,4 @@ def admin_panel():
 
     with tab_exportacion:
         st.header("Generar y Exportar Reportes")
-        st.info("Aquí puedes descargar tus datos analizados en diferentes formatos de reporte.")
-
-        if df_actual is not None and not df_actual.empty:
-            st.subheader("Reportes Generados")
-            col_pdf, col_word = st.columns(2)
-
-            with col_pdf:
-                with st.spinner("Generando PDF..."):
-                    pdf_data = generar_pdf(df_actual)
-                st.download_button(
-                    label="📄 Descargar Reporte PDF",
-                    data=pdf_data,
-                    file_name="reporte_hidromet.pdf",
-                    mime="application/pdf",
-                    help="Descarga un informe detallado de tus datos en formato PDF."
-                )
-            
-            with col_word:
-                with st.spinner("Generando Word..."):
-                    word_data = generar_word(df_actual)
-                st.download_button(
-                    label="📝 Descargar Reporte Word",
-                    data=word_data,
-                    file_name="reporte_hidromet.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    help="Descarga tus datos en un documento de Word para edición."
-                )
-        else:
-            st.info("No hay datos cargados para generar reportes. Carga un CSV primero.")
-
-# ----------------- Inicialización de Session State -----------------
-if 'autenticado' not in st.session_state:
-    st.session_state.autenticado = False
-    st.session_state.usuario = ""
-if 'df_cargado' not in st.session_state:
-    st.session_state.df_cargado = None
-
-# ----------------- Main Application Flow -----------------
-def main():
-    if st.session_state.autenticado:
-        admin_panel()
-    else:
-        login()
-
-main()
-    
+        st.info("Aquí puedes descargar tus datos analizados e
