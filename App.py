@@ -34,7 +34,7 @@ def logout():
     st.rerun()
 
 # ----------------- Generar PDF -----------------
-def generar_pdf(df_actual):
+def generar_pdf(df_to_export):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -168,9 +168,12 @@ def admin_panel():
             st.warning("El DataFrame cargado no contiene columnas numéricas para generar gráficos.")
 
         st.subheader("📤 Exportar Datos")
-                st.download_button(
+        pdf_data = generar_pdf(df_actual)
+        word_data = generar_word(df_actual)
+
+        st.download_button(
             label="📄 Descargar PDF",
-            data=generar_pdf(df_actual), # Llama a la función generar_pdf directamente aquí
+            data=pdf_data,
             file_name="reporte.pdf",
             mime="application/pdf"
         )
@@ -181,6 +184,9 @@ def admin_panel():
             file_name="reporte.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
+    else:
+        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación aquí.")
+
 
     if st.button("Cerrar sesión"):
         logout()
