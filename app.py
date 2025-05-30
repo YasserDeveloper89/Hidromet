@@ -1,104 +1,98 @@
 import streamlit as st import pandas as pd import base64 from io import BytesIO from docx import Document from fpdf import FPDF import matplotlib.pyplot as plt import numpy as np
 
-Configuración de página
+Configuración inicial
 
 st.set_page_config(page_title="Hidromet Pro", layout="wide")
 
-Estilo del modo claro/oscuro
+Modo claro/oscuro
 
-theme = st.selectbox("Selecciona el tema de la aplicación:", ["Claro", "Oscuro"])
+modo = st.sidebar.selectbox("Modo de visualización", ["Claro", "Oscuro"]) if modo == "Oscuro": st.markdown(""" <style> body { background-color: #111; color: #eee; } .stApp { background-color: #111; } </style> """, unsafe_allow_html=True)
 
-if theme == "Oscuro": st.markdown(""" <style> body { background-color: #0e1117; color: white; } .stTextInput > div > div > input { background-color: #262730; color: white; } .stSelectbox > div > div > select { background-color: #262730; color: white; } </style> """, unsafe_allow_html=True)
+Encabezado principal
 
-st.title("🌧️ Plataforma de Gestión Hidrometeorológica")
+st.title("🌦️ Plataforma Hidromet Pro") st.markdown("Una herramienta avanzada para análisis hidrometeorológico.")
 
-uploaded_file = st.file_uploader("📂 Sube tu archivo de datos (CSV o Excel)", type=["csv", "xlsx"])
+Subida de archivo
 
-if uploaded_file is not None: try: if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file, parse_dates=True) else: df = pd.read_excel(uploaded_file, parse_dates=True)
+uploaded_file = st.file_uploader("Sube un archivo CSV con datos meteorológicos o hidrológicos", type="csv")
 
-st.success("✅ Archivo cargado correctamente")
-    st.subheader("🔍 Vista previa de datos")
-    st.dataframe(df)
+if uploaded_file: try: df = pd.read_csv(uploaded_file) st.success("Archivo cargado correctamente") st.dataframe(df)
 
-    # Visualización de datos
-    st.subheader("📉 Visualización de datos")
+# Análisis rápido
+    st.subheader("Estadísticas rápidas")
+    st.write(df.describe())
 
-    date_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64']).columns
-    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
-
-    if not date_cols.empty and not numeric_cols.empty:
-        date_col = st.selectbox("Selecciona la columna de fecha", date_cols)
-        value_col = st.selectbox("Selecciona una columna numérica para graficar", numeric_cols)
-
-        fig, ax = plt.subplots()
-        ax.plot(df[date_col], df[value_col])
-        ax.set_xlabel(date_col)
-        ax.set_ylabel(value_col)
-        ax.set_title(f"{value_col} vs {date_col}")
-        ax.grid(True)
-        st.pyplot(fig)
+    # Visualización
+    st.subheader("Visualización de datos")
+    numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    if numeric_columns:
+        column_to_plot = st.selectbox("Selecciona una columna numérica para visualizar", numeric_columns)
+        plt.figure(figsize=(10, 4))
+        plt.plot(df[column_to_plot])
+        plt.title(f"Evolución de {column_to_plot}")
+        plt.xlabel("Índice")
+        plt.ylabel(column_to_plot)
+        st.pyplot(plt)
     else:
-        st.warning("⚠️ Se requieren columnas de tipo fecha y numéricas para visualizar.")
+        st.warning("No se encontraron columnas numéricas para graficar.")
 
+    # Generación de informe
     st.subheader("📝 Generar informe")
-    informe = st.text_area("Escribe aquí el resumen o conclusiones del informe")
+    informe_texto = st.text_area("Redacta tu informe aquí")
 
-    def generar_pdf(df, informe):
+    def generar_pdf():
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, "Informe Hidrometeorológico\n")
-        pdf.multi_cell(0, 10, "Resumen del Informe:\n" + informe + "\n\n")
-
+        pdf.multi_cell(0, 10, "Informe Hidromet Pro")
+        pdf.ln()
+        pdf.multi_cell(0, 10, informe_texto)
+        pdf.ln()
+        pdf.multi_cell(0, 10, "Resumen de datos:")
         for col in df.columns:
-            pdf.multi_cell(0, 10, f"{col}: {df[col].tolist()[:10]}")
-        buffer = BytesIO()
-        pdf.output(buffer)
-        buffer.seek(0)
-        return buffer
+            pdf.multi_cell(0, 10, f"{col}: {df[col].describe().to_dict()}")
+        output = BytesIO()
+        pdf.output(output)
+        return output
 
-    def generar_word(df, informe):
+    def generar_word():
         doc = Document()
-        doc.add_heading('Informe Hidrometeorológico', 0)
-        doc.add_paragraph('Resumen del Informe:')
-        doc.add_paragraph(informe)
+        doc.add_heading('Informe Hidromet Pro', 0)
+        doc.add_paragraph(informe_texto)
+        doc.add_heading('Resumen de datos', level=1)
+        for col in df.columns:
+            stats = df[col].describe().to_dict()
+            doc.add_paragraph(f"{col}: {stats}")
+        output = BytesIO()
+        doc.save(output)
+        return output
 
-        doc.add_heading('Datos:', level=1)
-        table = doc.add_table(rows=1, cols=len(df.columns))
-        hdr_cells = table.rows[0].cells
-        for i, col in enumerate(df.columns):
-            hdr_cells[i].text = str(col)
-
-        for index, row in df.iterrows():
-            row_cells = table.add_row().cells
-            for i, col in enumerate(df.columns):
-                row_cells[i].text = str(row[col])
-
-        buffer = BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
-
-    if st.button("📄 Descargar Informe en PDF"):
+    if st.button("📥 Descargar informe en PDF"):
         try:
-            pdf_file = generar_pdf(df, informe)
-            b64 = base64.b64encode(pdf_file.read()).decode()
-            href = f'<a href="data:application/octet-stream;base64,{b64}" download="informe.pdf">📥 Haz clic aquí para descargar el PDF</a>'
-            st.markdown(href, unsafe_allow_html=True)
+            pdf_bytes = generar_pdf()
+            st.download_button(
+                label="Descargar PDF",
+                data=pdf_bytes.getvalue(),
+                file_name="informe_hidromet.pdf",
+                mime="application/pdf"
+            )
         except Exception as e:
             st.error(f"Ocurrió un error al procesar el archivo: {e}")
 
-    if st.button("📝 Descargar Informe en Word"):
+    if st.button("📥 Descargar informe en Word"):
         try:
-            word_file = generar_word(df, informe)
-            b64 = base64.b64encode(word_file.read()).decode()
-            href = f'<a href="data:application/octet-stream;base64,{b64}" download="informe.docx">📥 Haz clic aquí para descargar el Word</a>'
-            st.markdown(href, unsafe_allow_html=True)
+            word_bytes = generar_word()
+            st.download_button(
+                label="Descargar Word",
+                data=word_bytes.getvalue(),
+                file_name="informe_hidromet.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
         except Exception as e:
             st.error(f"Ocurrió un error al procesar el archivo: {e}")
 
 except Exception as e:
-    st.error(f"❌ Error al leer el archivo: {e}")
+    st.error(f"Error al cargar archivo: {e}")
 
-else: st.info("📎 Por favor, sube un archivo para comenzar.")
+else: st.info("Por favor, sube un archivo para comenzar.")
 
