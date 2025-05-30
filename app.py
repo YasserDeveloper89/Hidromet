@@ -1,85 +1,85 @@
 import streamlit as st import pandas as pd import numpy as np from io import BytesIO from docx import Document from fpdf import FPDF import plotly.graph_objects as go from datetime import datetime
 
-✅ Configurar la página (debe ser la primera instrucción Streamlit)
+Configurar la página
 
 st.set_page_config(page_title="HydroClimaPRO", layout="wide")
 
-🎨 Establecer fondo futurista
+Estilo personalizado
 
-def set_background(): st.markdown( f""" <style> .stApp {{ background-image: url("https://images.unsplash.com/photo-1601597111221-06a1b6be9a39?auto=format&fit=crop&w=1950&q=80"); background-size: cover; background-attachment: fixed; color: #FFFFFF; }} .block-container {{ background-color: rgba(0, 0, 0, 0.6); padding: 2rem; border-radius: 1rem; }} </style> """, unsafe_allow_html=True )
+st.markdown(""" <style> .reportview-container { background: #f9f9f9; color: #333333; } .main .block-container { padding-top: 2rem; padding-bottom: 2rem; padding-left: 3rem; padding-right: 3rem; } .stButton>button { border-radius: 12px; background-color: #0066cc; color: white; font-size: 16px; padding: 10px 24px; } </style> """, unsafe_allow_html=True)
 
-set_background()
+Título de la app
 
-st.title("📊 HydroClimaPRO - Análisis Avanzado de Datos Climáticos")
+st.title("HydroClimaPRO") st.subheader("Análisis de Datos Hidrometeorológicos Avanzado")
 
-📁 Subida de archivo CSV
+Cargar datos desde archivo de ejemplo o subir uno propio
 
-data_file = st.file_uploader("Carga tu archivo CSV con datos climáticos", type=["csv"])
+with st.sidebar: st.header("Cargar Datos") uploaded_file = st.file_uploader("Carga tu archivo CSV", type=["csv"]) if uploaded_file is None: st.info("Cargando archivo de ejemplo...") uploaded_file = BytesIO(pd.DataFrame({ "Fecha": pd.date_range("2024-01-01", periods=10), "Temperatura (°C)": np.random.uniform(10, 30, 10), "Precipitación (mm)": np.random.uniform(0, 100, 10), "Humedad (%)": np.random.uniform(30, 90, 10) }).to_csv(index=False).encode())
 
-🔍 Análisis de datos
+Leer el archivo CSV
 
-if data_file is not None: df = pd.read_csv(data_file) st.success("Archivo cargado correctamente") st.subheader("Vista previa de los datos") st.dataframe(df.head())
+try: df = pd.read_csv(uploaded_file, parse_dates=["Fecha"]) st.success("Datos cargados correctamente.")
 
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+# Vista previa
+st.subheader("Vista Previa de los Datos")
+st.dataframe(df.head(10), use_container_width=True)
 
-# 📈 Visualización avanzada de datos
-st.subheader("📊 Visualización de Datos Interactiva")
-selected_col = st.selectbox("Selecciona una columna numérica para graficar:", numeric_cols)
+# Análisis estadístico
+st.subheader("Resumen Estadístico")
+st.dataframe(df.describe(), use_container_width=True)
 
-if selected_col:
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df.index, y=df[selected_col], mode='lines+markers', name=selected_col))
-    fig.update_layout(title=f"Visualización de {selected_col}", xaxis_title="Índice", yaxis_title=selected_col,
-                      template="plotly_dark")
-    st.plotly_chart(fig, use_container_width=True)
+# Visualización interactiva
+st.subheader("Visualización de Datos")
+columna = st.selectbox("Selecciona columna para graficar", df.select_dtypes(include=[np.number]).columns)
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df["Fecha"], y=df[columna], mode='lines+markers', name=columna))
+fig.update_layout(title=f"Tendencia de {columna}", xaxis_title="Fecha", yaxis_title=columna,
+                  template="plotly_dark", height=400)
+st.plotly_chart(fig, use_container_width=True)
 
-# 📊 Estadísticas avanzadas
-st.subheader("📊 Estadísticas Generales")
-stats = df.describe().transpose()
-st.dataframe(stats)
+# Generar informe
+st.subheader("Generar Informe")
+resumen = st.text_area("Introduce un resumen para el informe:", height=150)
 
-# 📑 Generar informe Word
-def create_word_report():
+if st.button("Generar Documento"):
+    # WORD
     doc = Document()
-    doc.add_heading("Informe de Datos Climáticos - HydroClimaPRO", 0)
-    doc.add_paragraph(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    doc.add_heading("Resumen Estadístico", level=1)
-    doc.add_paragraph(stats.to_string())
+    doc.add_heading("Informe Hidrometeorológico", 0)
+    doc.add_paragraph(f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if resumen:
+        doc.add_paragraph("Resumen del Informe:")
+        doc.add_paragraph(resumen)
+    doc.add_paragraph("\nDatos:")
+    table = doc.add_table(rows=1, cols=len(df.columns))
+    hdr_cells = table.rows[0].cells
+    for i, col in enumerate(df.columns):
+        hdr_cells[i].text = str(col)
+    for _, row in df.iterrows():
+        row_cells = table.add_row().cells
+        for i, val in enumerate(row):
+            row_cells[i].text = str(val)
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
-    return buffer
+    st.download_button("Descargar Informe Word", buffer, file_name="informe_hidro.docx")
 
-# 🧾 Generar informe PDF
-def create_pdf_report():
+    # PDF
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos Climáticos - HydroClimaPRO", ln=True, align='C')
-    pdf.ln(10)
-    pdf.cell(200, 10, txt=f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='L')
-    pdf.ln(10)
-    for col in stats.index:
-        row = stats.loc[col]
-        line = f"{col}: Media={row['mean']:.2f}, Min={row['min']:.2f}, Max={row['max']:.2f}"
-        pdf.cell(200, 10, txt=line, ln=True, align='L')
+    pdf.cell(200, 10, txt="Informe Hidrometeorológico", ln=True, align='C')
+    pdf.cell(200, 10, txt=f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='C')
+    if resumen:
+        pdf.multi_cell(0, 10, txt=f"\nResumen:\n{resumen}")
+    pdf.ln(5)
+    pdf.cell(0, 10, txt="\nDatos:", ln=True)
+    for index, row in df.iterrows():
+        line = ', '.join([f"{col}: {row[col]}" for col in df.columns])
+        pdf.multi_cell(0, 10, txt=line)
     pdf_output = BytesIO()
     pdf.output(pdf_output)
     pdf_output.seek(0)
-    return pdf_output
+    st.download_button("Descargar Informe PDF", pdf_output, file_name="informe_hidro.pdf")
 
-# 📥 Botones de descarga
-st.subheader("📥 Exportar Informes")
-col1, col2 = st.columns(2)
-with col1:
-    if st.download_button("📄 Descargar Informe Word", data=create_word_report(), file_name="informe_climatico.docx"):
-        st.success("Informe Word generado con éxito")
-with col2:
-    if st.download_button("🧾 Descargar Informe PDF", data=create_pdf_report(), file_name="informe_climatico.pdf"):
-        st.success("Informe PDF generado con éxito")
-
-else: st.markdown(""" ### Bienvenido a HydroClimaPRO Esta plataforma avanzada permite: - Cargar y analizar datos climáticos - Visualizar gráficas interactivas - Generar informes profesionales en PDF y Word
-
-Por favor, sube un archivo CSV para comenzar.
-""")
+except Exception as e: st.error(f"Error al procesar los datos: {e}")
 
