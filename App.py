@@ -23,8 +23,8 @@ def login():
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
             st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
-            # Eliminar st.query_params.update({"logged": "true"}) y st.experimental_rerun()
-            # El cambio en st.session_state.autenticado hará que main() redibuje el panel de admin
+            # Ya no necesitamos st.experimental_rerun() aquí.
+            # Streamlit detecta el cambio en st.session_state y redibuja.
         else:
             st.error("❌ Usuario o contraseña incorrectos")
 
@@ -32,8 +32,8 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-    # Eliminar st.query_params.clear() y st.experimental_rerun()
-    # El cambio en st.session_state.autenticado hará que main() redibuje el formulario de login
+    # Tampoco necesitamos st.experimental_rerun() aquí.
+    # Streamlit detecta el cambio en st.session_state y redibuja.
 
 # ----------------- Generar PDF -----------------
 def generar_pdf(df):
@@ -42,18 +42,28 @@ def generar_pdf(df):
     pdf.set_font("Arial", size=12)
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
-    # Ajustar el ancho de las celdas para que no se superpongan
-    col_width = pdf.w / (len(df.columns) + 1) # +1 para el índice
+
+    # Añadir encabezados de la tabla al PDF
+    col_width = pdf.w / (len(df.columns) + 1) # Calcula el ancho de columna
     for col in df.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
+
+    # Añadir filas de datos al PDF
     for index, row in df.iterrows():
-        pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1) # Formatear la fecha
+        # Formatear la fecha para el índice
+        if isinstance(index, pd.Timestamp):
+            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
+        else:
+            pdf.cell(col_width, 10, str(index), border=1)
+
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
+
     buffer = BytesIO()
-    pdf.output(buffer)
+    # CAMBIO CRÍTICO AQUÍ: 'output' para escribir al buffer directamente
+    pdf.output(buffer, 'S') # 'S' para cadena/bytes en memoria
     pdf_data = buffer.getvalue()
     return pdf_data
 
@@ -95,13 +105,21 @@ def admin_panel():
     pdf_data = generar_pdf(df)
     word_data = generar_word(df)
 
-    b64_pdf = base64.b64encode(pdf_data).decode()
-    href_pdf = f'<a href="data:application/pdf;base64,{b64_pdf}" download="reporte.pdf">📄 Descargar PDF</a>'
-    st.markdown(href_pdf, unsafe_allow_html=True)
+    # Botones de descarga de PDF
+    st.download_button(
+        label="📄 Descargar PDF",
+        data=pdf_data,
+        file_name="reporte.pdf",
+        mime="application/pdf"
+    )
 
-    b64_word = base64.b64encode(word_data).decode()
-    href_word = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64_word}" download="reporte.docx">📝 Descargar Word</a>'
-    st.markdown(href_word, unsafe_allow_html=True)
+    # Botones de descarga de Word
+    st.download_button(
+        label="📝 Descargar Word",
+        data=word_data,
+        file_name="reporte.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
     if st.button("Cerrar sesión"):
         logout()
