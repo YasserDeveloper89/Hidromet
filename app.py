@@ -2,35 +2,16 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 from io import BytesIO
 from docx import Document
 from fpdf import FPDF
+from datetime import datetime
 import base64
 
-# --- Configuración de página ---
-st.set_page_config(page_title="HydroClimaPRO", layout="wide")
+st.set_page_config(page_title="Hidromet Admin PRO", layout="wide", page_icon="📊")
 
-# --- Simulación de base de usuarios ---
-USERS = {
-    "admin": {"password": "admin123", "role": "admin"},
-    "tecnico": {"password": "tec456", "role": "tecnico"},
-    "usuario": {"password": "user789", "role": "usuario"}
-}
-
-# --- Funciones auxiliares ---
-def logout():
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.success("Sesión cerrada correctamente.")
-    st.experimental_set_query_params()
-
-
-def download_button(buffer, filename, mime):
-    b64 = base64.b64encode(buffer.getvalue()).decode()
-    href = f'<a href="data:{mime};base64,{b64}" download="{filename}" class="download-btn">Descargar {filename}</a>'
-    return href
-
-
+# --- Utilidades ---
 def export_pdf(df):
     try:
         pdf = FPDF()
@@ -38,109 +19,158 @@ def export_pdf(df):
         pdf.set_font("Arial", size=12)
         pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align='C')
         pdf.ln(10)
-        col_width = pdf.w / (len(df.columns) + 1)
-        row_height = 8
 
-        for col in df.columns:
-            pdf.cell(col_width, row_height, txt=str(col), border=1)
-        pdf.ln(row_height)
+        col_names = df.columns.tolist()
+        pdf.cell(200, 10, txt=" | ".join(col_names), ln=True)
 
         for _, row in df.iterrows():
-            for item in row:
-                pdf.cell(col_width, row_height, txt=str(item), border=1)
-            pdf.ln(row_height)
+            line = " | ".join(str(x) for x in row)
+            pdf.cell(200, 10, txt=line, ln=True)
 
         buffer = BytesIO()
         pdf.output(buffer)
         buffer.seek(0)
-        return download_button(buffer, "reporte.pdf", "application/pdf")
+        return buffer
     except Exception as e:
-        return f"<p style='color:red;'>Error al generar PDF: {e}</p>"
+        st.error(f"Error al generar PDF: {e}")
 
 
 def export_word(df):
     try:
         doc = Document()
         doc.add_heading('Reporte de Datos', 0)
+
         table = doc.add_table(rows=1, cols=len(df.columns))
         hdr_cells = table.rows[0].cells
-        for i, col in enumerate(df.columns):
-            hdr_cells[i].text = str(col)
-        for _, row in df.iterrows():
+        for i, column in enumerate(df.columns):
+            hdr_cells[i].text = str(column)
+
+        for index, row in df.iterrows():
             row_cells = table.add_row().cells
-            for i, item in enumerate(row):
-                row_cells[i].text = str(item)
+            for i, cell in enumerate(row):
+                row_cells[i].text = str(cell)
+
         buffer = BytesIO()
         doc.save(buffer)
         buffer.seek(0)
-        return download_button(buffer, "reporte.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        return buffer
     except Exception as e:
-        return f"<p style='color:red;'>Error al generar Word: {e}</p>"
+        st.error(f"Error al generar Word: {e}")
 
+# --- Simulación de usuarios ---
+USUARIOS = {
+    "admin": "admin123",
+    "tecnico": "tec456"
+}
 
-def admin_panel(df):
-    st.title("Panel de Administración 🛠️")
-    st.markdown("---")
-
-    st.subheader("📊 Visualización de Datos")
-    st.dataframe(df)
-
-    st.subheader("📈 Gráficos Interactivos")
-    st.plotly_chart(px.line(df))
-
-    st.subheader("📌 Mapa de correlación")
-    try:
-        fig_corr = px.imshow(df.corr(numeric_only=True), text_auto=True, aspect="auto")
-        st.plotly_chart(fig_corr)
-    except Exception as e:
-        st.error(f"Error al generar mapa de correlación: {e}")
-
-    st.subheader("📥 Exportar Reportes")
-    st.markdown(export_pdf(df), unsafe_allow_html=True)
-    st.markdown(export_word(df), unsafe_allow_html=True)
-
-    st.subheader("🔌 Conexión con sensores")
-    st.success("Conectado al sensor X - datos sincronizados")
-
+if "login" not in st.session_state:
+    st.session_state.login = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
 def login():
-    st.title("🔐 Iniciar Sesión")
+    st.title("Inicio de sesión")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
-    login_btn = st.button("Iniciar Sesión")
-
-    if login_btn:
-        user = USERS.get(username)
-        if user and user["password"] == password:
-            st.session_state["logged_in"] = True
-            st.session_state["username"] = username
-            st.session_state["role"] = user["role"]
-            st.rerun()
+    if st.button("Iniciar sesión"):
+        if username in USUARIOS and USUARIOS[username] == password:
+            st.session_state.login = True
+            st.session_state.username = username
+            st.experimental_rerun()
         else:
             st.error("Credenciales inválidas")
 
+def logout():
+    if st.button("Cerrar sesión"):
+        st.session_state.login = False
+        st.session_state.username = ""
+        st.experimental_rerun()
 
-# --- App Principal ---
-if "logged_in" not in st.session_state:
+def admin_panel():
+    st.sidebar.header("Panel Administrador")
+    logout()
+    st.title("Panel de Control - Administrador")
+
+    archivo = st.file_uploader("Sube un archivo CSV", type="csv")
+    if archivo is not None:
+        df = pd.read_csv(archivo)
+
+        st.subheader("1. Vista previa de los datos")
+        st.dataframe(df)
+
+        st.subheader("2. Estadísticas descriptivas")
+        st.write(df.describe())
+
+        st.subheader("3. Gráficos interactivos")
+        numeric_df = df.select_dtypes(include='number')
+        if not numeric_df.empty:
+            st.plotly_chart(px.line(numeric_df))
+
+        st.subheader("4. Histograma")
+        col = st.selectbox("Selecciona columna para histograma", numeric_df.columns)
+        st.plotly_chart(px.histogram(df, x=col))
+
+        st.subheader("5. Mapa de correlación")
+        fig_corr = px.imshow(numeric_df.corr(), text_auto=True, aspect="auto")
+        st.plotly_chart(fig_corr)
+
+        st.subheader("6. Exportar informe")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📄 Exportar a Word"):
+                docx_file = export_word(df)
+                st.download_button("Descargar Word", data=docx_file, file_name="informe.docx")
+        with col2:
+            if st.button("📑 Exportar a PDF"):
+                pdf_file = export_pdf(df)
+                st.download_button("Descargar PDF", data=pdf_file, file_name="informe.pdf")
+
+        st.subheader("7. Filtros avanzados")
+        filtro_col = st.selectbox("Filtrar por columna", df.columns)
+        valores = df[filtro_col].unique()
+        seleccion = st.multiselect("Selecciona valores", valores)
+        if seleccion:
+            st.dataframe(df[df[filtro_col].isin(seleccion)])
+
+        st.subheader("8. Detección de valores nulos")
+        st.dataframe(df.isnull().sum())
+
+        st.subheader("9. Gráfico de cajas")
+        st.plotly_chart(px.box(df, y=col))
+
+        st.subheader("10. Exportar CSV limpio")
+        st.download_button("Descargar CSV", data=df.to_csv(index=False), file_name="datos_limpios.csv")
+
+        st.subheader("11. Matriz de dispersión")
+        st.plotly_chart(px.scatter_matrix(numeric_df))
+
+        st.subheader("12. Valores máximos/mínimos")
+        st.write("Máximos")
+        st.write(df.max())
+        st.write("Mínimos")
+        st.write(df.min())
+
+        st.subheader("13. Conexión a sensores [SIMULADO]")
+        st.info("⏳ Conectando a sensores en tiempo real... [Simulado]")
+
+        st.subheader("14. Guardar configuración")
+        nombre = st.text_input("Nombre del archivo de configuración")
+        if st.button("Guardar configuración"):
+            st.success(f"Configuración '{nombre}' guardada con éxito [Simulado]")
+
+        st.subheader("15. Monitor en tiempo real")
+        st.line_chart(numeric_df.head(100))
+
+    else:
+        st.info("Por favor, sube un archivo CSV para empezar")
+
+# --- App Main ---
+if not st.session_state.login:
     login()
 else:
-    st.sidebar.title("Menú")
-    st.sidebar.write(f"👤 Usuario: {st.session_state['username']}")
-    if st.sidebar.button("Cerrar Sesión"):
-        logout()
-        st.rerun()
-
-    uploaded_file = st.sidebar.file_uploader("Subir archivo CSV", type=["csv"])
-
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            if st.session_state["role"] == "admin":
-                admin_panel(df)
-            else:
-                st.warning("Este rol aún no tiene acceso completo. Inicia sesión como admin.")
-        except Exception as e:
-            st.error(f"Ocurrió un error al procesar el archivo: {e}")
+    if st.session_state.username == "admin":
+        admin_panel()
     else:
-        st.warning("Por favor, sube un archivo CSV para comenzar.")
-    
+        st.title(f"Bienvenido, {st.session_state.username}")
+        st.info("Este usuario aún no tiene funciones avanzadas en esta versión.")
+        
