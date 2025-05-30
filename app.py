@@ -173,4 +173,3 @@ else:
     else:
         st.title(f"Bienvenido, {st.session_state.username}")
         st.info("Este usuario aún no tiene funciones avanzadas en esta versión.")
-        
