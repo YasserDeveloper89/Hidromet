@@ -9,174 +9,166 @@ from fpdf import FPDF
 from datetime import datetime
 import base64
 
-st.set_page_config(page_title="Hidromet Admin Panel", layout="wide")
+# Config
+st.set_page_config(page_title="Panel de Hidrometeorología", layout="wide")
 
-# ---- UTILIDADES ----
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.username = ""
-    st.session_state.password = ""
+# Usuarios válidos
+USUARIOS = {"admin": "admin123"}
 
+# Sesión
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "usuario" not in st.session_state:
+    st.session_state.usuario = ""
+
+# LOGIN
 def login():
-    st.title("Inicio de sesión")
-    username = st.text_input("Usuario")
-    password = st.text_input("Contraseña", type="password")
+    with st.container():
+        st.markdown("## Inicio de sesión")
+        usuario = st.text_input("Usuario", key="usuario_input")
+        clave = st.text_input("Contraseña", type="password", key="clave_input")
+        login_btn = st.button("Iniciar sesión")
 
-    if st.button("Iniciar sesión"):
-        if username == "admin" and password == "admin123":
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.success(f"✅ Login exitoso. Bienvenido, {username}")
-            st.experimental_rerun()
-        else:
-            st.error("❌ Credenciales inválidas")
+        if login_btn:
+            if usuario in USUARIOS and USUARIOS[usuario] == clave:
+                st.session_state.autenticado = True
+                st.session_state.usuario = usuario
+                st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
+            else:
+                st.error("❌ Credenciales inválidas")
 
-# ---- FUNCIONES PARA EXPORTAR ----
-def export_pdf(df):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe de Datos", ln=1, align="C")
-    for i in range(len(df)):
-        row = ', '.join([str(x) for x in df.iloc[i]])
-        pdf.multi_cell(0, 10, row)
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
-    return pdf_output
+# LOGOUT
+def logout():
+    st.session_state.autenticado = False
+    st.session_state.usuario = ""
+    st.experimental_set_query_params()  # Limpia la URL
+    st.success("✅ Sesión cerrada correctamente")
 
-def export_word(df):
-    doc = Document()
-    doc.add_heading("Informe de Datos", level=1)
-    table = doc.add_table(rows=1, cols=len(df.columns))
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df.columns):
-        hdr_cells[i].text = str(col)
-    for _, row in df.iterrows():
-        row_cells = table.add_row().cells
-        for i, item in enumerate(row):
-            row_cells[i].text = str(item)
-    output = BytesIO()
-    doc.save(output)
-    output.seek(0)
-    return output
+# EXPORTAR PDF
+def exportar_pdf(df):
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=10)
+        pdf.cell(200, 10, txt="Informe de Datos", ln=True, align="C")
+        for i in range(len(df)):
+            row = ', '.join([str(x) for x in df.iloc[i]])
+            pdf.multi_cell(200, 10, txt=row)
+        buffer = BytesIO()
+        pdf.output(buffer)
+        buffer.seek(0)
+        b64 = base64.b64encode(buffer.read()).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="informe.pdf">📄 Descargar PDF</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error al generar PDF: {e}")
 
-# ---- PÁGINA ADMIN ----
-def admin_panel():
-    st.sidebar.title("Panel de Administrador")
-    st.sidebar.success(f"Sesión iniciada como {st.session_state.username}")
+# EXPORTAR WORD
+def exportar_word(df):
+    try:
+        doc = Document()
+        doc.add_heading("Informe de Datos", 0)
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(df.columns):
+            hdr_cells[i].text = col
+        for _, row in df.iterrows():
+            row_cells = table.add_row().cells
+            for i, item in enumerate(row):
+                row_cells[i].text = str(item)
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        b64 = base64.b64encode(buffer.read()).decode()
+        href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="informe.docx">📝 Descargar Word</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error al generar Word: {e}")
 
-    if st.sidebar.button("Cerrar sesión"):
+# HERRAMIENTAS ADMIN
+def admin_panel(df):
+    st.title("Panel de Administración Avanzado")
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        exportar_pdf(df)
+    with col2:
+        exportar_word(df)
+
+    st.subheader("1. Vista previa de datos")
+    st.dataframe(df)
+
+    st.subheader("2. Estadísticas descriptivas")
+    st.write(df.describe())
+
+    st.subheader("3. Histograma")
+    col = st.selectbox("Selecciona una columna numérica", df.select_dtypes(include=np.number).columns)
+    st.plotly_chart(px.histogram(df, x=col), use_container_width=True)
+
+    st.subheader("4. Gráfico de líneas")
+    st.plotly_chart(px.line(df), use_container_width=True)
+
+    st.subheader("5. Mapa de calor (correlación)")
+    corr_df = df.select_dtypes(include=np.number).corr()
+    fig_corr = px.imshow(corr_df, text_auto=True, aspect="auto")
+    st.plotly_chart(fig_corr, use_container_width=True)
+
+    st.subheader("6. Dispersión entre variables")
+    cols = df.select_dtypes(include=np.number).columns
+    if len(cols) >= 2:
+        x_col = st.selectbox("X", cols, key="scatter_x")
+        y_col = st.selectbox("Y", cols, key="scatter_y")
+        st.plotly_chart(px.scatter(df, x=x_col, y=y_col), use_container_width=True)
+
+    st.subheader("7. Boxplot")
+    col = st.selectbox("Columna", df.select_dtypes(include=np.number).columns, key="boxplot")
+    st.plotly_chart(px.box(df, y=col), use_container_width=True)
+
+    st.subheader("8. Gráfico de barras por categoría")
+    cat_col = st.selectbox("Columna categórica", df.select_dtypes(exclude=np.number).columns, key="bar_cat")
+    num_col = st.selectbox("Valor numérico", df.select_dtypes(include=np.number).columns, key="bar_num")
+    st.plotly_chart(px.bar(df, x=cat_col, y=num_col), use_container_width=True)
+
+    st.subheader("9. Tendencias con media móvil")
+    trend_col = st.selectbox("Columna para tendencia", df.select_dtypes(include=np.number).columns, key="trend")
+    df["media_movil"] = df[trend_col].rolling(window=3).mean()
+    st.line_chart(df[[trend_col, "media_movil"]])
+
+    st.subheader("10. Análisis de valores nulos")
+    st.write(df.isnull().sum())
+
+    st.subheader("11. Mapa (si hay lat/lon)")
+    if "lat" in df.columns and "lon" in df.columns:
+        st.map(df.rename(columns={"lat": "latitude", "lon": "longitude"}))
+
+    st.subheader("12. Filtro dinámico")
+    filtro_col = st.selectbox("Columna para filtrar", df.columns)
+    valores = df[filtro_col].unique()
+    seleccion = st.multiselect("Selecciona valor(es)", valores)
+    if seleccion:
+        st.dataframe(df[df[filtro_col].isin(seleccion)])
+
+    st.markdown("---")
+    if st.button("🚪 Cerrar sesión"):
         logout()
-        st.experimental_rerun()
 
-    st.title("Panel de Control Avanzado")
-    uploaded_file = st.file_uploader("📁 Subir archivo CSV", type="csv")
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.success("✅ Datos cargados correctamente")
-
-        tabs = st.tabs([
-            "📊 Datos", "📈 Gráficos", "📉 Correlación", "📤 Exportar", 
-            "📌 Estadísticas", "🧮 Matriz", "📦 Valores Nulos", "📐 Boxplots", 
-            "📍 Mapa Geográfico", "🕒 Serie Temporal", "⚙️ Simulación", "🧠 IA básica"
-        ])
-
-        # TAB: Datos
-        with tabs[0]:
-            st.subheader("📋 Vista previa de los datos")
-            st.dataframe(df, use_container_width=True)
-
-        # TAB: Gráficos
-        with tabs[1]:
-            st.subheader("📈 Gráficos Interactivos")
-            col = st.selectbox("Seleccionar columna para histograma", df.columns)
-            fig = px.histogram(df, x=col)
-            st.plotly_chart(fig, use_container_width=True)
-
-        # TAB: Correlación
-        with tabs[2]:
-            st.subheader("🔗 Mapa de Correlación")
-            numeric_df = df.select_dtypes(include='number')
-            corr = numeric_df.corr()
-            fig_corr = px.imshow(corr, text_auto=True, aspect="auto", title="Matriz de Correlación")
-            st.plotly_chart(fig_corr, use_container_width=True)
-
-        # TAB: Exportar
-        with tabs[3]:
-            st.subheader("📤 Exportar Informes")
-            pdf = export_pdf(df)
-            st.download_button("📄 Descargar PDF", pdf, file_name="informe.pdf")
-            word = export_word(df)
-            st.download_button("📝 Descargar Word", word, file_name="informe.docx")
-
-        # TAB: Estadísticas
-        with tabs[4]:
-            st.subheader("📌 Estadísticas Descriptivas")
-            st.dataframe(df.describe(), use_container_width=True)
-
-        # TAB: Matriz
-        with tabs[5]:
-            st.subheader("📊 Matriz de Dispersión")
-            fig = px.scatter_matrix(numeric_df)
-            st.plotly_chart(fig, use_container_width=True)
-
-        # TAB: Valores Nulos
-        with tabs[6]:
-            st.subheader("📦 Valores Nulos")
-            st.write(df.isnull().sum())
-
-        # TAB: Boxplots
-        with tabs[7]:
-            st.subheader("📐 Boxplots")
-            col = st.selectbox("Seleccionar columna para Boxplot", numeric_df.columns)
-            fig = px.box(df, y=col)
-            st.plotly_chart(fig, use_container_width=True)
-
-        # TAB: Mapa Geográfico
-        with tabs[8]:
-            st.subheader("🌍 Mapa Geográfico")
-            if "lat" in df.columns and "lon" in df.columns:
-                st.map(df.rename(columns={"lat": "latitude", "lon": "longitude"}))
-            else:
-                st.warning("No se encontraron columnas 'lat' y 'lon'")
-
-        # TAB: Serie Temporal
-        with tabs[9]:
-            st.subheader("🕒 Serie Temporal")
-            if "fecha" in df.columns:
-                df['fecha'] = pd.to_datetime(df['fecha'])
-                col = st.selectbox("Columna numérica para graficar", numeric_df.columns)
-                fig = px.line(df, x='fecha', y=col)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("No se encontró una columna 'fecha'")
-
-        # TAB: Simulación
-        with tabs[10]:
-            st.subheader("⚙️ Simulación de Datos")
-            col = st.selectbox("Variable a simular", numeric_df.columns)
-            ruido = st.slider("Nivel de ruido", 0.0, 1.0, 0.1)
-            simulated = df[col] + np.random.normal(0, ruido, len(df))
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(y=df[col], name="Original"))
-            fig.add_trace(go.Scatter(y=simulated, name="Simulado"))
-            st.plotly_chart(fig, use_container_width=True)
-
-        # TAB: IA básica (placeholder)
-        with tabs[11]:
-            st.subheader("🤖 Predicción Básica (Placeholder)")
-            st.info("Aquí podrías cargar un modelo de ML para análisis en tiempo real")
-
+# MAIN APP
+def main():
+    if not st.session_state.autenticado:
+        login()
     else:
-        st.warning("Por favor cargue un archivo para acceder a las herramientas")
+        st.sidebar.title("Panel de navegación")
+        archivo = st.sidebar.file_uploader("📂 Cargar archivo CSV", type=["csv"])
+        if archivo is not None:
+            try:
+                df = pd.read_csv(archivo)
+                admin_panel(df)
+            except Exception as e:
+                st.error(f"Error al cargar archivo: {e}")
+        else:
+            st.warning("Por favor cargue un archivo para acceder a las herramientas.")
 
-# ---- CONTROL PRINCIPAL ----
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if st.session_state.logged_in:
-    admin_panel()
-else:
-    login()
-    
+# RUN
+if __name__ == "__main__":
+    main()
