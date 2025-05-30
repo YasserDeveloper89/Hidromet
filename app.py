@@ -1,85 +1,140 @@
-import streamlit as st import pandas as pd import numpy as np from io import BytesIO from docx import Document from fpdf import FPDF import plotly.graph_objects as go from datetime import datetime
+import streamlit as st
+import pandas as pd
+import numpy as np
+from io import BytesIO
+from docx import Document
+from fpdf import FPDF
+import plotly.graph_objects as go
+from datetime import datetime
 
-Configurar la página
-
+# Configuración de la página
 st.set_page_config(page_title="HydroClimaPRO", layout="wide")
 
-Estilo personalizado
+# Función para cargar datos de muestra
+@st.cache_data
+def cargar_datos_ejemplo():
+    fechas = pd.date_range(start='2024-01-01', periods=30, freq='D')
+    datos = {
+        "Fecha": fechas,
+        "Temperatura (°C)": np.random.uniform(15, 35, len(fechas)).round(1),
+        "Precipitación (mm)": np.random.uniform(0, 20, len(fechas)).round(1),
+        "Humedad (%)": np.random.uniform(40, 90, len(fechas)).round(1)
+    }
+    return pd.DataFrame(datos)
 
-st.markdown(""" <style> .reportview-container { background: #f9f9f9; color: #333333; } .main .block-container { padding-top: 2rem; padding-bottom: 2rem; padding-left: 3rem; padding-right: 3rem; } .stButton>button { border-radius: 12px; background-color: #0066cc; color: white; font-size: 16px; padding: 10px 24px; } </style> """, unsafe_allow_html=True)
+# Título principal
+st.title("📊 HydroClimaPRO - Plataforma Inteligente de Datos Meteorológicos")
 
-Título de la app
+# Cargar archivo
+st.sidebar.header("📂 Cargar Datos")
+archivo_subido = st.sidebar.file_uploader("Carga un archivo CSV", type=["csv"])
 
-st.title("HydroClimaPRO") st.subheader("Análisis de Datos Hidrometeorológicos Avanzado")
+# Mostrar datos
+if archivo_subido is not None:
+    df = pd.read_csv(archivo_subido, parse_dates=True)
+else:
+    df = cargar_datos_ejemplo()
+    st.sidebar.info("Usando datos de ejemplo (simulados).")
 
-Cargar datos desde archivo de ejemplo o subir uno propio
+st.subheader("📋 Vista Previa de Datos")
+st.dataframe(df, use_container_width=True)
 
-with st.sidebar: st.header("Cargar Datos") uploaded_file = st.file_uploader("Carga tu archivo CSV", type=["csv"]) if uploaded_file is None: st.info("Cargando archivo de ejemplo...") uploaded_file = BytesIO(pd.DataFrame({ "Fecha": pd.date_range("2024-01-01", periods=10), "Temperatura (°C)": np.random.uniform(10, 30, 10), "Precipitación (mm)": np.random.uniform(0, 100, 10), "Humedad (%)": np.random.uniform(30, 90, 10) }).to_csv(index=False).encode())
+# Análisis rápido
+st.subheader("📈 Análisis Rápido de Estadísticas")
+st.write(df.describe().T.style.background_gradient(cmap='Blues').format("{:.2f}"))
 
-Leer el archivo CSV
+# Visualización de datos
+st.subheader("📉 Visualización Interactiva")
+columna_seleccionada = st.selectbox("Selecciona una variable para graficar:", df.select_dtypes(include=np.number).columns)
 
-try: df = pd.read_csv(uploaded_file, parse_dates=["Fecha"]) st.success("Datos cargados correctamente.")
-
-# Vista previa
-st.subheader("Vista Previa de los Datos")
-st.dataframe(df.head(10), use_container_width=True)
-
-# Análisis estadístico
-st.subheader("Resumen Estadístico")
-st.dataframe(df.describe(), use_container_width=True)
-
-# Visualización interactiva
-st.subheader("Visualización de Datos")
-columna = st.selectbox("Selecciona columna para graficar", df.select_dtypes(include=[np.number]).columns)
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df["Fecha"], y=df[columna], mode='lines+markers', name=columna))
-fig.update_layout(title=f"Tendencia de {columna}", xaxis_title="Fecha", yaxis_title=columna,
-                  template="plotly_dark", height=400)
-st.plotly_chart(fig, use_container_width=True)
+if columna_seleccionada:
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df.index, y=df[columna_seleccionada],
+                             mode='lines+markers',
+                             line=dict(color='deepskyblue', width=2),
+                             marker=dict(size=6),
+                             name=columna_seleccionada))
+    fig.update_layout(
+        title=f"{columna_seleccionada} en el tiempo",
+        xaxis_title="Índice o Fecha",
+        yaxis_title=columna_seleccionada,
+        template="plotly_dark",
+        height=500
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # Generar informe
-st.subheader("Generar Informe")
-resumen = st.text_area("Introduce un resumen para el informe:", height=150)
+st.subheader("📝 Generar Informe")
 
-if st.button("Generar Documento"):
-    # WORD
+titulo = st.text_input("Título del Informe", value="Informe Meteorológico Detallado")
+resumen = st.text_area("Resumen o Conclusiones", height=150)
+
+def generar_pdf(titulo, resumen, df):
+    buffer = BytesIO()
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, titulo, ln=1)
+    pdf.set_font("Arial", '', 12)
+    pdf.multi_cell(0, 10, resumen)
+    pdf.ln(10)
+
+    pdf.set_font("Arial", 'B', 12)
+    for col in df.columns:
+        pdf.cell(40, 10, col, 1)
+    pdf.ln()
+
+    pdf.set_font("Arial", '', 10)
+    for i in range(min(len(df), 20)):
+        for col in df.columns:
+            pdf.cell(40, 10, str(df[col].iloc[i]), 1)
+        pdf.ln()
+
+    pdf.output(buffer)
+    buffer.seek(0)
+    return buffer
+
+def generar_docx(titulo, resumen, df):
+    buffer = BytesIO()
     doc = Document()
-    doc.add_heading("Informe Hidrometeorológico", 0)
-    doc.add_paragraph(f"Fecha de generación: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    if resumen:
-        doc.add_paragraph("Resumen del Informe:")
-        doc.add_paragraph(resumen)
-    doc.add_paragraph("\nDatos:")
+    doc.add_heading(titulo, 0)
+    doc.add_paragraph(resumen)
+
     table = doc.add_table(rows=1, cols=len(df.columns))
     hdr_cells = table.rows[0].cells
     for i, col in enumerate(df.columns):
-        hdr_cells[i].text = str(col)
-    for _, row in df.iterrows():
+        hdr_cells[i].text = col
+
+    for i in range(min(len(df), 20)):
         row_cells = table.add_row().cells
-        for i, val in enumerate(row):
-            row_cells[i].text = str(val)
-    buffer = BytesIO()
+        for j, col in enumerate(df.columns):
+            row_cells[j].text = str(df[col].iloc[i])
+
     doc.save(buffer)
     buffer.seek(0)
-    st.download_button("Descargar Informe Word", buffer, file_name="informe_hidro.docx")
+    return buffer
 
-    # PDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Informe Hidrometeorológico", ln=True, align='C')
-    pdf.cell(200, 10, txt=f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='C')
-    if resumen:
-        pdf.multi_cell(0, 10, txt=f"\nResumen:\n{resumen}")
-    pdf.ln(5)
-    pdf.cell(0, 10, txt="\nDatos:", ln=True)
-    for index, row in df.iterrows():
-        line = ', '.join([f"{col}: {row[col]}" for col in df.columns])
-        pdf.multi_cell(0, 10, txt=line)
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
-    st.download_button("Descargar Informe PDF", pdf_output, file_name="informe_hidro.pdf")
+col1, col2 = st.columns(2)
 
-except Exception as e: st.error(f"Error al procesar los datos: {e}")
+with col1:
+    if st.button("📄 Exportar como PDF"):
+        try:
+            pdf_buffer = generar_pdf(titulo, resumen, df)
+            st.download_button("⬇️ Descargar PDF", pdf_buffer, file_name="informe_meteorologico.pdf", mime="application/pdf")
+        except Exception as e:
+            st.error(f"Error al generar PDF: {e}")
 
+with col2:
+    if st.button("📝 Exportar como Word"):
+        try:
+            word_buffer = generar_docx(titulo, resumen, df)
+            st.download_button("⬇️ Descargar DOCX", word_buffer, file_name="informe_meteorologico.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        except Exception as e:
+            st.error(f"Error al generar Word: {e}")
+
+# Footer
+st.markdown("---")
+st.markdown(
+    "<div style='text-align:center; color:gray;'>HydroClimaPRO v1.0 · Todos los derechos reservados · 2025</div>",
+    unsafe_allow_html=True
+  )
