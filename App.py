@@ -42,18 +42,23 @@ def generar_pdf(df_to_export):
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
 
-    col_width = pdf.w / (len(df_to_export.columns) + 1)
+    # Add table headers
+    # Ensure all columns are handled
+    col_widths = [pdf.w / (len(df_to_export.columns) + 1)] * len(df_to_export.columns) # Adjust as needed
+    
+    # Try to fit content, simple fixed width for now
     for col in df_to_export.columns:
-        pdf.cell(col_width, 10, str(col), border=1)
+        pdf.cell(40, 10, str(col), border=1) # Fixed width, adjust if cols are too wide
     pdf.ln()
 
     for index, row in df_to_export.iterrows():
-        if isinstance(index, pd.Timestamp):
-            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
-        else:
-            pdf.cell(col_width, 10, str(index), border=1)
+        # This part handles the index if it's a Timestamp, otherwise just print it.
+        # However, for the PDF generation based on df_to_export, typically you'd just iterate through rows.
+        # Assuming df_to_export is just the data. If index needs to be a column, it should be in df_to_export.
+        
+        # Iterating through row items directly
         for item in row:
-            pdf.cell(col_width, 10, str(item), border=1)
+            pdf.cell(40, 10, str(item), border=1) # Fixed width
         pdf.ln()
 
     buffer = BytesIO()
@@ -84,20 +89,20 @@ def admin_panel():
 
     # --- CSV Upload Section ---
     st.subheader("📁 Cargar y Analizar Datos (CSV)")
-    # Removed the redundant text here, as the title already explains it.
+    # This is the line that will remain, with clear instructions without repetition
     uploaded_file = st.file_uploader("Sube tu archivo CSV aquí para visualizar y analizar.", type=["csv"]) 
 
+    # Initialize df_cargado if no file is uploaded
     if uploaded_file is None:
         st.session_state.df_cargado = None
-        # Only show this info when no file is uploaded yet
-        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación.")
-
-
+    
+    # Process uploaded file and set df_cargado
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
             st.success("Archivo CSV cargado exitosamente.")
 
+            # Attempt to set 'fecha' as index
             if 'fecha' in df.columns:
                 try:
                     df['fecha'] = pd.to_datetime(df['fecha'])
@@ -125,9 +130,15 @@ def admin_panel():
             st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
             st.session_state.df_cargado = None
     
-    # Conditional display of CSV-related tools
+    # --- Conditional Display of CSV-related tools ---
     df_actual = st.session_state.df_cargado
-    if df_actual is not None and not df_actual.empty:
+
+    if df_actual is None: # If no CSV is loaded, show the initial prompt
+        # THIS IS THE EXACT LINE THAT WAS REQUESTED TO BE REMOVED WHEN IT WAS DUPLICATED,
+        # BUT IT'S APPROPRIATE TO SHOW HERE WHEN NO FILE IS YET UPLOADED.
+        # Previous removal attempt was incorrect.
+        st.info("Sube un archivo CSV para visualizar los datos, gráficos y opciones de exportación.")
+    elif df_actual is not None and not df_actual.empty: # Only show these if a CSV is loaded
         numeric_df = df_actual.select_dtypes(include=['number'])
 
         if not numeric_df.empty:
@@ -191,8 +202,7 @@ def admin_panel():
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
     
-    # --- Separador ---
-    st.write("---")
+    ---
 
     # --- Nueva Herramienta: Visualización de Temperatura y Fecha (Siempre visible) ---
     st.subheader("🌡️ Visualización de Datos de Temperatura y Ambiente")
@@ -234,13 +244,13 @@ def admin_panel():
     else:
         st.info("No hay datos ambientales disponibles para mostrar en este momento.")
 
-    st.write("---")
+    ---
 
     # --- Otras herramientas de administración (ejemplo) ---
     st.subheader("👥 Gestión de Usuarios (Próximamente)")
     st.info("Esta sección estará disponible en futuras actualizaciones para gestionar usuarios y permisos.")
 
-    st.write("---")
+    ---
 
     if st.button("Cerrar sesión"):
         logout()
@@ -260,4 +270,4 @@ def main():
         login()
 
 main()
-                        
+    
