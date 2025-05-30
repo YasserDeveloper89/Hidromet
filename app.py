@@ -5,25 +5,24 @@ import plotly.express as px
 from io import BytesIO
 from docx import Document
 from fpdf import FPDF
-from datetime import datetime
 
-# --- Configuración de la página ---
 st.set_page_config(page_title="HydroClima PRO", layout="wide")
 
-# --- Usuarios permitidos ---
+# --- Definición de usuarios ---
 USERS = {
     "admin": {"password": "admin123", "role": "Administrador"},
     "tecnico": {"password": "tecnico123", "role": "Técnico"},
     "observador": {"password": "observador123", "role": "Observador"}
 }
 
-# --- Inicializar variables de sesión ---
+# --- Inicializar sesión ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.session_state.role = ""
+    st.session_state.trigger_login = False
 
-# --- Funciones de exportación ---
+# --- Exportar PDF ---
 def export_pdf(df):
     try:
         pdf = FPDF()
@@ -33,13 +32,13 @@ def export_pdf(df):
         for i in range(len(df)):
             row = ', '.join([str(x) for x in df.iloc[i]])
             pdf.cell(200, 10, txt=row, ln=1)
-        buffer = BytesIO()
-        pdf.output(buffer)
-        buffer.seek(0)
-        st.download_button("📄 Descargar PDF", buffer, file_name="informe.pdf")
+
+        pdf_bytes = pdf.output(dest="S").encode("latin1")
+        st.download_button("📄 Descargar PDF", data=pdf_bytes, file_name="informe.pdf", mime="application/pdf")
     except Exception as e:
         st.error(f"Error al generar PDF: {e}")
 
+# --- Exportar Word ---
 def export_word(df):
     try:
         doc = Document()
@@ -59,48 +58,45 @@ def export_word(df):
     except Exception as e:
         st.error(f"Error al generar Word: {e}")
 
-# --- Panel de Administración ---
+# --- Paneles de usuario ---
 def admin_panel(df):
     st.title("👑 Panel de Administración")
     if df is not None:
-        st.subheader("📈 Gráficos interactivos")
+        st.subheader("📈 Análisis avanzado")
         for col in df.select_dtypes(include=np.number).columns:
             fig = px.line(df, y=col, title=f"Evolución de {col}", template="plotly_dark")
             st.plotly_chart(fig, use_container_width=True)
 
-        st.subheader("📤 Exportar informes")
+        st.subheader("📤 Exportar")
         export_pdf(df)
         export_word(df)
 
-        st.subheader("🛠️ Herramientas avanzadas")
-        st.markdown("- Conexión a sensores de medición (modo simulado)")
-        st.markdown("- Control de usuarios y roles")
-        st.markdown("- Visualización completa del sistema")
+        st.subheader("⚙️ Control del sistema")
+        st.markdown("✅ Conexión a sensores (modo simulado)")
+        st.markdown("✅ Gestión total de datos")
     else:
-        st.warning("Carga un archivo primero para acceder a las herramientas.")
+        st.info("Carga un archivo CSV para acceder a las funciones.")
 
-# --- Panel Técnico ---
 def tecnico_panel(df):
     st.title("🧪 Panel Técnico")
     if df is not None:
         st.dataframe(df.head())
-        selected_col = st.selectbox("Selecciona una columna para graficar", df.select_dtypes(include=np.number).columns)
-        st.plotly_chart(px.line(df, y=selected_col, title=f"Gráfico de {selected_col}", template="plotly_dark"), use_container_width=True)
+        selected_col = st.selectbox("Columna para graficar", df.select_dtypes(include=np.number).columns)
+        st.plotly_chart(px.line(df, y=selected_col, title=f"{selected_col}", template="plotly_dark"), use_container_width=True)
         export_pdf(df)
     else:
-        st.warning("Por favor, carga un archivo CSV.")
+        st.warning("Carga un archivo para visualizar datos.")
 
-# --- Panel Observador ---
 def observador_panel(df):
-    st.title("👀 Panel de Observador")
+    st.title("👁️ Panel Observador")
     if df is not None:
         st.dataframe(df.head(10))
     else:
         st.warning("Carga un archivo para visualizar datos.")
 
-# --- Login UI ---
+# --- Interfaz de Login ---
 def login_ui():
-    st.title("🔐 Inicio de Sesión")
+    st.title("🔐 Inicia sesión para acceder")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
     if st.button("Iniciar sesión"):
@@ -111,29 +107,29 @@ def login_ui():
         else:
             st.error("❌ Usuario o contraseña incorrectos")
 
-# --- Cierre de sesión ---
+# --- Logout ---
 def logout():
     if st.sidebar.button("🔒 Cerrar sesión"):
         st.session_state.logged_in = False
         st.session_state.username = ""
         st.session_state.role = ""
 
-# --- Cargar archivo ---
+# --- Subida de archivo ---
 def cargar_csv():
-    st.sidebar.subheader("📁 Cargar archivo CSV")
-    archivo = st.sidebar.file_uploader("Selecciona archivo", type=["csv"])
+    st.sidebar.subheader("📂 Cargar datos")
+    archivo = st.sidebar.file_uploader("Selecciona un archivo CSV", type=["csv"])
     if archivo:
         return pd.read_csv(archivo)
     return None
 
-# --- Lógica principal ---
+# --- App principal ---
 if not st.session_state.logged_in:
     login_ui()
 else:
-    st.sidebar.write(f"👤 Usuario: {st.session_state.username}")
-    st.sidebar.write(f"🔑 Rol: {st.session_state.role}")
+    st.sidebar.success(f"👤 {st.session_state.username} ({st.session_state.role})")
     logout()
     df = cargar_csv()
+
     rol = st.session_state.role
     if rol == "Administrador":
         admin_panel(df)
