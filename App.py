@@ -41,16 +41,25 @@ def generar_pdf(df_to_export):
     pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
     pdf.ln()
 
-    col_width = pdf.w / (len(df_to_export.columns) + 1)
+    # Añadir los encabezados de las columnas
+    col_width = pdf.w / (len(df_to_export.columns) + 1) # +1 para el índice
+    if df_to_export.index.name:
+        pdf.cell(col_width, 10, str(df_to_export.index.name), border=1)
+    else:
+        pdf.cell(col_width, 10, "Índice", border=1)
     for col in df_to_export.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
+    # Añadir los datos
     for index, row in df_to_export.iterrows():
+        # Manejar el índice, especialmente si es un Timestamp
         if isinstance(index, pd.Timestamp):
             pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
         else:
             pdf.cell(col_width, 10, str(index), border=1)
+        
+        # Añadir los valores de las filas
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
@@ -61,17 +70,35 @@ def generar_pdf(df_to_export):
     return pdf_data
 
 # ----------------- Generar Word -----------------
-def generar_word(df_to_export): # Aquí se recibe df_to_export
+def generar_word(df_to_export):
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
-    table = doc.add_table(rows=1, cols=len(df_to_export.columns))
+    
+    # Asegúrate de incluir el nombre del índice si existe, o una columna de "Índice"
+    columns_for_word = []
+    if df_to_export.index.name:
+        columns_for_word.append(df_to_export.index.name)
+    else:
+        columns_for_word.append("Índice")
+    columns_for_word.extend(df_to_export.columns.tolist())
+
+    table = doc.add_table(rows=1, cols=len(columns_for_word))
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns
-        hdr_cells[i].text = col
+    for i, col_name in enumerate(columns_for_word):
+        hdr_cells[i].text = col_name
+    
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        for i, col_name in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns y col_name
-            row_cells[i].text = str(row[col_name])
+        # Añadir el índice
+        if isinstance(index, pd.Timestamp):
+            row_cells[0].text = str(index.strftime('%Y-%m-%d'))
+        else:
+            row_cells[0].text = str(index)
+
+        # Añadir los valores de las columnas del DataFrame
+        for i, col_name in enumerate(df_to_export.columns):
+            row_cells[i+1].text = str(row[col_name]) # +1 porque la primera celda es para el índice
+            
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
@@ -168,6 +195,8 @@ def admin_panel():
             st.warning("El DataFrame cargado no contiene columnas numéricas para generar gráficos.")
 
         st.subheader("📤 Exportar Datos")
+        
+        # Generar los datos para la descarga solo si df_actual no está vacío
         pdf_data = generar_pdf(df_actual)
         word_data = generar_word(df_actual)
 
@@ -203,4 +232,4 @@ def main():
         login()
 
 main()
-                 
+    
