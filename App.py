@@ -7,7 +7,7 @@ from docx import Document
 
 # ----------------- Autenticación -----------------
 USUARIOS = {
-    "admin": "admin123",
+    "admin": "YZ1BKzgHIK7P7ZrB",
     "tecnico": "tecnico123"
 }
 
