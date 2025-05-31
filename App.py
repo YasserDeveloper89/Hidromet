@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -6,46 +5,34 @@ from fpdf import FPDF
 from io import BytesIO
 from docx import Document
 
-# ----------------- Estilos Premium Modernos -----------------
-st.markdown("""
-    <style>
-    html, body, [class*="css"] {
-        font-family: 'Segoe UI', sans-serif;
-        background: linear-gradient(to bottom, #1f1c2c, #928dab);
-        color: #ffffff;
-    }
-    .stApp {
-        background-color: #121212;
-        border-radius: 10px;
-        padding: 20px;
-    }
-    .stButton > button {
-        background-color: #6a11cb;
-        background-image: linear-gradient(315deg, #6a11cb 0%, #2575fc 74%);
-        color: white;
-        border-radius: 8px;
-        padding: 0.6em 1.2em;
-        border: none;
-    }
-    .stTextInput > div > div > input {
-        background-color: #2c2f33;
-        color: #ffffff;
-        border-radius: 5px;
-        padding: 0.5em;
-    }
-    .block-container {
-        padding-top: 2rem;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# ----------------- Usuarios -----------------
+# ----------------- Autenticación -----------------
 USUARIOS = {
     "admin": "YZ1BKzgHIK7P7ZrB",
     "tecnico": "tecnico123"
 }
 
-# ----------------- PDF -----------------
+# ----------------- Login -----------------
+def login():
+    st.title("💧 Hydromet - Centro de control de datos ambientales")
+    usuario = st.text_input("Usuario")
+    contraseña = st.text_input("Contraseña", type="password")
+    if st.button("Iniciar sesión"):
+        if usuario in USUARIOS and USUARIOS[usuario] == contraseña:
+            st.session_state.autenticado = True
+            st.session_state.usuario = usuario
+            st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
+            st.rerun()
+        else:
+            st.error("❌ Usuario o contraseña incorrectos")
+
+# ----------------- Logout -----------------
+def logout():
+    st.session_state.autenticado = False
+    st.session_state.usuario = ""
+    st.session_state.df_cargado = None  # Limpiar datos al cerrar sesión
+    st.rerun()
+
+# ----------------- Exportar a PDF -----------------
 def generar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
@@ -62,7 +49,7 @@ def generar_pdf(df):
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
-# ----------------- Word -----------------
+# ----------------- Exportar a Word -----------------
 def generar_word(df):
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
@@ -87,95 +74,92 @@ def cargar_datos():
             if 'fecha' in df.columns:
                 df['fecha'] = pd.to_datetime(df['fecha'])
                 df.set_index('fecha', inplace=True)
-                st.success("✅ CSV cargado con 'fecha' como índice.")
+                st.success("CSV cargado y columna 'fecha' establecida como índice.")
             st.session_state.df_cargado = df
         except Exception as e:
             st.error(f"Error al cargar el archivo: {e}")
             st.session_state.df_cargado = None
 
-# ----------------- Herramientas Básicas -----------------
-def herramientas_basicas(df):
-    st.subheader("📄 Vista Previa")
-    st.dataframe(df)
-    st.metric("Total de registros", len(df))
-    st.subheader("📈 Serie de Tiempo")
-    st.line_chart(df)
-    numeric_df = df.select_dtypes(include='number')
-    if not numeric_df.empty:
-        st.subheader("📊 Matriz de Correlación")
-        fig = px.imshow(numeric_df.corr(), text_auto=True)
-        st.plotly_chart(fig)
-    st.subheader("📤 Exportar")
-    st.download_button("📄 PDF", data=generar_pdf(df), file_name="reporte.pdf", mime="application/pdf")
-    st.download_button("📝 Word", data=generar_word(df), file_name="reporte.docx",
-                       mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-# ----------------- Herramientas Avanzadas -----------------
-def herramientas_admin_extras(df):
-    numeric_df = df.select_dtypes(include='number')
-    if not numeric_df.empty:
-        st.subheader("📌 Histograma Avanzado")
-        col_hist = st.selectbox("Columna", numeric_df.columns)
-        fig_hist = px.histogram(df, x=col_hist, color_discrete_sequence=["#ff6a00"])
-        st.plotly_chart(fig_hist)
-        st.subheader("📌 Boxplot")
-        fig_box = px.box(df, y=col_hist)
-        st.plotly_chart(fig_box)
-        st.subheader("📉 Análisis de Tendencia")
-        df_rolling = df[numeric_df.columns].rolling(window=7).mean()
-        st.line_chart(df_rolling)
-        st.subheader("🧮 Nulos por Columna")
-        st.write(df.isnull().sum())
-        st.subheader("📅 Distribución Mensual")
-        st.line_chart(df.resample('M').mean(numeric_only=True))
-        st.subheader("📊 Estadísticas Descriptivas")
-        st.dataframe(numeric_df.describe())
-
-# ----------------- Panel Técnico -----------------
-def tecnico_panel():
-    st.title("🔧 Panel Técnico")
-    cargar_datos()
-    df = st.session_state.get('df_cargado')
-    if df is not None:
-        herramientas_basicas(df)
-    if st.button("Cerrar sesión"):
-        cerrar_sesion()
-
-# ----------------- Panel Admin -----------------
+# ----------------- Panel del Administrador -----------------
 def admin_panel():
     st.title("🛠️ Panel de Administración")
+    st.write(f"Bienvenido, {st.session_state.usuario}")
     cargar_datos()
+
     df = st.session_state.get('df_cargado')
     if df is not None:
-        herramientas_basicas(df)
-        herramientas_admin_extras(df)
+        st.subheader("📄 Vista Previa de los Datos")
+        st.dataframe(df)
+
+        st.subheader("📈 Serie de Tiempo")
+        st.line_chart(df)
+
+        numeric_df = df.select_dtypes(include='number')
+        if not numeric_df.empty:
+            st.subheader("📊 Correlación")
+            fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
+            st.plotly_chart(fig)
+
+            st.subheader("📌 Dispersión")
+            cols = numeric_df.columns.tolist()
+            x = st.selectbox("Eje X", cols)
+            y = st.selectbox("Eje Y", cols)
+            if x and y:
+                fig_scatter = px.scatter(df, x=x, y=y, title=f"{x} vs {y}")
+                st.plotly_chart(fig_scatter)
+
+            st.subheader("📌 Histograma")
+            col_hist = st.selectbox("Selecciona columna", cols)
+            fig_hist = px.histogram(df, x=col_hist, marginal="rug", title=f"Histograma de {col_hist}")
+            st.plotly_chart(fig_hist)
+
+        st.subheader("📤 Exportar Datos")
+        st.download_button("📄 Descargar PDF", data=generar_pdf(df), file_name="reporte.pdf", mime="application/pdf")
+        st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
     if st.button("Cerrar sesión"):
-        cerrar_sesion()
+        logout()
 
-# ----------------- Login -----------------
-def login():
-    st.title("💧 Hydromet - Centro de Control")
-    st.markdown("Inicia sesión para acceder al sistema:")
-    usuario = st.text_input("Usuario")
-    contraseña = st.text_input("Contraseña", type="password")
-    if st.button("Iniciar sesión"):
-        if usuario in USUARIOS and USUARIOS[usuario] == contraseña:
-            st.session_state.autenticado = True
-            st.session_state.usuario = usuario
-        else:
-            st.error("❌ Usuario o contraseña incorrectos")
+# ----------------- Panel del Técnico -----------------
+def tecnico_panel():
+    st.title("🔧 Panel Técnico")
+    st.write(f"Bienvenido, {st.session_state.usuario}")
+    cargar_datos()
 
-# ----------------- Cerrar Sesión -----------------
-def cerrar_sesion():
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.experimental_rerun()
+    df = st.session_state.get('df_cargado')
+    if df is not None:
+        st.subheader("📄 Vista Previa de los Datos")
+        st.dataframe(df)
+
+        st.subheader("📈 Serie de Tiempo")
+        st.line_chart(df)
+
+        numeric_df = df.select_dtypes(include='number')
+        if not numeric_df.empty:
+            st.subheader("📊 Correlación")
+            fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
+            st.plotly_chart(fig)
+
+        st.subheader("📤 Exportar Datos")
+        st.download_button("📄 Descargar PDF", data=generar_pdf(df), file_name="reporte.pdf", mime="application/pdf")
+        st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    else:
+        st.info("¡Comienza tu análisis! Sube un archivo CSV y visualiza los datos de forma organizada")
+
+    if st.button("Cerrar sesión"):
+        logout()
 
 # ----------------- Inicialización -----------------
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
+if 'usuario' not in st.session_state:
+    st.session_state.usuario = ""
+if 'df_cargado' not in st.session_state:
+    st.session_state.df_cargado = None
 
-# ----------------- Main -----------------
+# ----------------- Main App -----------------
 def main():
     if st.session_state.autenticado:
         if st.session_state.usuario == "admin":
@@ -186,3 +170,4 @@ def main():
         login()
 
 main()
+                                             
