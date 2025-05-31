@@ -146,7 +146,8 @@ def tecnico_panel():
         st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     else:
-        
+        st.info("Carga un archivo CSV para comenzar.")
+
     if st.button("Cerrar sesión"):
         logout()
 
