@@ -2,179 +2,166 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import matplotlib.pyplot as plt
+import base64
 from io import BytesIO
 from fpdf import FPDF
 from docx import Document
 
-# ----------------- Autenticación -----------------
+st.set_page_config(page_title="Hydromet 💧", layout="wide")
+
+# Autenticación simulada
 USUARIOS = {
-    "admin": "admin123",
-    "tecnico": "tecnico123"
+    "admin": {"password": "admin123", "rol": "administrador"},
+    "tecnico": {"password": "tecnico123", "rol": "tecnico"}
 }
 
-# ----------------- Login -----------------
 def login():
-    st.title("💧 Hydromet - Inicio de sesión")
+    st.title("Hydromet 💧 - Inicio de sesión")
     usuario = st.text_input("Usuario")
-    contrasena = st.text_input("Contraseña", type="password")
+    password = st.text_input("Contraseña", type="password")
     if st.button("Iniciar sesión"):
-        if usuario in USUARIOS and USUARIOS[usuario] == contrasena:
+        if usuario in USUARIOS and USUARIOS[usuario]["password"] == password:
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
-            st.rerun()
+            st.session_state.rol = USUARIOS[usuario]["rol"]
+            st.experimental_rerun()
         else:
-            st.error("❌ Usuario o contraseña incorrectos")
+            st.error("Credenciales incorrectas")
 
-# ----------------- Logout -----------------
 def logout():
-    st.session_state.autenticado = False
-    st.session_state.usuario = ""
-    st.session_state.df_cargado = None
-    st.experimental_rerun()
+    st.session_state.clear()
+    st.stop()
 
-# ----------------- Generar PDF -----------------
-def generar_pdf(df_to_export):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
-    pdf.ln()
+def cargar_datos():
+    archivo = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
+    if archivo is not None:
+        try:
+            df = pd.read_csv(archivo)
+            st.session_state["df_actual"] = df
+            st.success("Archivo cargado correctamente.")
+        except Exception as e:
+            st.error(f"Error al cargar el archivo: {e}")
 
-    col_width = pdf.w / (len(df_to_export.columns) + 1)
-    for col in df_to_export.columns:
-        pdf.cell(col_width, 10, str(col), border=1)
-    pdf.ln()
+def visualizar_datos(df):
+    st.subheader("Vista previa de los datos")
+    st.dataframe(df)
 
-    for index, row in df_to_export.iterrows():
-        pdf.cell(col_width, 10, str(index), border=1)
-        for item in row:
-            pdf.cell(col_width, 10, str(item), border=1)
-        pdf.ln()
+def matriz_correlacion(df):
+    st.subheader("Matriz de correlación")
+    try:
+        numeric_df = df.select_dtypes(include='number')
+        if numeric_df.empty:
+            st.warning("No hay columnas numéricas para correlación.")
+        else:
+            corr = numeric_df.corr()
+            fig = px.imshow(corr, text_auto=True, aspect="auto", title="Matriz de Correlación")
+            st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"No se pudo generar la matriz de correlación: {e}")
 
-    pdf_output = pdf.output(dest='S').encode('latin-1')
-    return pdf_output
+def generar_pdf(df):
+    st.subheader("Exportar datos a PDF")
+    if st.button("Generar PDF"):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=10)
+        col_width = pdf.w / (len(df.columns) + 1)
+        row_height = 6
+        for col in df.columns:
+            pdf.cell(col_width, row_height, str(col), border=1)
+        pdf.ln(row_height)
+        for index, row in df.iterrows():
+            for item in row:
+                pdf.cell(col_width, row_height, str(item), border=1)
+            pdf.ln(row_height)
+        buffer = BytesIO()
+        pdf.output(buffer)
+        b64 = base64.b64encode(buffer.getvalue()).decode()
+        href = f'<a href="data:application/pdf;base64,{b64}" download="datos.pdf">Descargar PDF</a>'
+        st.markdown(href, unsafe_allow_html=True)
 
-# ----------------- Generar Word -----------------
-def generar_word(df_to_export):
-    doc = Document()
-    doc.add_heading("Reporte de Datos", 0)
-    table = doc.add_table(rows=1, cols=len(df_to_export.columns))
-    hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df_to_export.columns):
-        hdr_cells[i].text = col
-    for _, row in df_to_export.iterrows():
-        row_cells = table.add_row().cells
-        for i, col_name in enumerate(df_to_export.columns):
-            row_cells[i].text = str(row[col_name])
-    buffer = BytesIO()
-    doc.save(buffer)
-    return buffer.getvalue()
+def generar_word(df):
+    st.subheader("Exportar datos a Word")
+    if st.button("Generar Word"):
+        doc = Document()
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        hdr_cells = table.rows[0].cells
+        for i, col in enumerate(df.columns):
+            hdr_cells[i].text = str(col)
+        for index, row in df.iterrows():
+            row_cells = table.add_row().cells
+            for i, item in enumerate(row):
+                row_cells[i].text = str(item)
+        buffer = BytesIO()
+        doc.save(buffer)
+        b64 = base64.b64encode(buffer.getvalue()).decode()
+        href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="datos.docx">Descargar Word</a>'
+        st.markdown(href, unsafe_allow_html=True)
 
-# ----------------- Panel de Administrador -----------------
+def graficos_adicionales(df):
+    st.subheader("Gráfico de barras")
+    column_bar = st.selectbox("Selecciona una columna categórica", df.columns)
+    if column_bar:
+        try:
+            data_bar = df[column_bar].value_counts().reset_index()
+            data_bar.columns = [column_bar, "count"]
+            fig_bar = px.bar(data_bar, x=column_bar, y="count", title=f"Distribución de {column_bar}")
+            st.plotly_chart(fig_bar, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error en gráfico de barras: {e}")
+
+    st.subheader("Gráfico de líneas")
+    num_cols = df.select_dtypes(include='number').columns.tolist()
+    if len(num_cols) >= 2:
+        x_col = st.selectbox("Eje X", num_cols, index=0)
+        y_col = st.selectbox("Eje Y", num_cols, index=1)
+        fig_line = px.line(df, x=x_col, y=y_col, title=f"Gráfico de {y_col} vs {x_col}")
+        st.plotly_chart(fig_line, use_container_width=True)
+
 def admin_panel():
-    st.title("🛠️ Hydromet - Panel de Administración")
-    st.write(f"Bienvenido, {st.session_state.usuario}")
-
-    uploaded_file = st.file_uploader("📁 Sube tu archivo CSV para visualizar los datos", type=["csv"])
-
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            if 'fecha' in df.columns:
-                df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
-                df.set_index('fecha', inplace=True)
-            st.session_state.df_cargado = df
-        except Exception as e:
-            st.error(f"Error al leer el archivo CSV: {e}")
-            return
-
-    df_actual = st.session_state.get('df_cargado')
-    if df_actual is not None:
-        st.subheader("Vista Previa de los Datos")
-        st.dataframe(df_actual)
-
-        st.subheader("📈 Visualización de Datos")
-        st.line_chart(df_actual.select_dtypes(include='number'))
-
-        st.subheader("📊 Matriz de Correlación")
-        try:
-            numeric_df = df_actual.select_dtypes(include='number')
-            fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
-            st.plotly_chart(fig)
-        except Exception as e:
-            st.warning(f"No se pudo generar la matriz de correlación: {e}")
-
-        # Nuevas herramientas
-        st.subheader("📌 Boxplot de Variables")
-        col = st.selectbox("Selecciona columna para Boxplot", options=numeric_df.columns)
-        fig_box = px.box(df_actual, y=col, title=f"Boxplot de {col}")
-        st.plotly_chart(fig_box)
-
-        st.subheader("📊 Diagrama de barras")
-        if not df_actual.empty:
-            column_bar = st.selectbox("Selecciona columna para Diagrama de Barras", df_actual.columns)
-            fig_bar = px.bar(df_actual[column_bar].value_counts().reset_index(), x='index', y=column_bar, title=f"Distribución de {column_bar}")
-            st.plotly_chart(fig_bar)
-
-        st.subheader("📤 Exportar Datos")
-        pdf_data = generar_pdf(df_actual)
-        word_data = generar_word(df_actual)
-
-        st.download_button("📄 Descargar PDF", data=pdf_data, file_name="reporte.pdf", mime="application/pdf")
-        st.download_button("📝 Descargar Word", data=word_data, file_name="reporte.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-    if st.button("Cerrar sesión"):
+    st.title("Panel de Administración 💧")
+    st.sidebar.success(f"Conectado como: {st.session_state.usuario}")
+    if st.sidebar.button("💧 Cerrar sesión"):
         logout()
 
-# ----------------- Panel de Técnico -----------------
+    cargar_datos()
+
+    if "df_actual" in st.session_state:
+        df = st.session_state["df_actual"]
+        visualizar_datos(df)
+        matriz_correlacion(df)
+        graficos_adicionales(df)
+        generar_pdf(df)
+        generar_word(df)
+
 def tecnico_panel():
-    st.title("🔧 Hydromet - Vista Técnica")
-    st.write(f"Bienvenido, {st.session_state.usuario}")
-
-    uploaded_file = st.file_uploader("📁 Sube tu archivo CSV para visualizar los datos", type=["csv"])
-
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            if 'fecha' in df.columns:
-                df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
-                df.set_index('fecha', inplace=True)
-            st.session_state.df_cargado = df
-        except Exception as e:
-            st.error(f"Error al leer el archivo CSV: {e}")
-            return
-
-    df_actual = st.session_state.get('df_cargado')
-    if df_actual is not None:
-        st.subheader("Vista Previa de los Datos")
-        st.dataframe(df_actual)
-
-        st.subheader("📈 Visualización Básica")
-        st.line_chart(df_actual.select_dtypes(include='number'))
-
-        st.subheader("📤 Exportar Datos")
-        pdf_data = generar_pdf(df_actual)
-        word_data = generar_word(df_actual)
-
-        st.download_button("📄 Descargar PDF", data=pdf_data, file_name="reporte.pdf", mime="application/pdf")
-        st.download_button("📝 Descargar Word", data=word_data, file_name="reporte.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-    if st.button("Cerrar sesión"):
+    st.title("Panel Técnico 💧")
+    st.sidebar.success(f"Conectado como: {st.session_state.usuario}")
+    if st.sidebar.button("💧 Cerrar sesión"):
         logout()
 
-# ----------------- Main -----------------
-if 'autenticado' not in st.session_state:
-    st.session_state.autenticado = False
-    st.session_state.usuario = ""
-    st.session_state.df_cargado = None
+    cargar_datos()
+
+    if "df_actual" in st.session_state:
+        df = st.session_state["df_actual"]
+        visualizar_datos(df)
+        generar_pdf(df)
+        generar_word(df)
 
 def main():
-    if st.session_state.autenticado:
-        if st.session_state.usuario == 'admin':
-            admin_panel()
-        else:
-            tecnico_panel()
-    else:
-        login()
+    if "autenticado" not in st.session_state:
+        st.session_state.autenticado = False
 
-main()
+    if not st.session_state.autenticado:
+        login()
+    else:
+        rol = st.session_state.get("rol", "")
+        if rol == "administrador":
+            admin_panel()
+        elif rol == "tecnico":
+            tecnico_panel()
+        else:
+            st.error("Rol no reconocido.")
+
+if __name__ == "__main__":
+    main()
