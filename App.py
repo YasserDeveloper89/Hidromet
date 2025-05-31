@@ -29,6 +29,7 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
+    st.session_state.df_cargado = None  # Limpiar datos al cerrar sesión
     st.rerun()
 
 # ----------------- Exportar a PDF -----------------
@@ -87,7 +88,7 @@ def admin_panel():
 
     df = st.session_state.get('df_cargado')
     if df is not None:
-        st.subheader("Vista Previa de los Datos")
+        st.subheader("📄 Vista Previa de los Datos")
         st.dataframe(df)
 
         st.subheader("📈 Serie de Tiempo")
@@ -128,7 +129,7 @@ def tecnico_panel():
 
     df = st.session_state.get('df_cargado')
     if df is not None:
-        st.subheader("Vista Previa de los Datos")
+        st.subheader("📄 Vista Previa de los Datos")
         st.dataframe(df)
 
         st.subheader("📈 Serie de Tiempo")
@@ -150,13 +151,15 @@ def tecnico_panel():
     if st.button("Cerrar sesión"):
         logout()
 
-# ----------------- Main App -----------------
+# ----------------- Inicialización -----------------
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
+if 'usuario' not in st.session_state:
     st.session_state.usuario = ""
 if 'df_cargado' not in st.session_state:
     st.session_state.df_cargado = None
 
+# ----------------- Main App -----------------
 def main():
     if st.session_state.autenticado:
         if st.session_state.usuario == "admin":
