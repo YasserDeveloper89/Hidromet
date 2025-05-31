@@ -7,23 +7,6 @@ from io import BytesIO
 from fpdf import FPDF
 from docx import Document
 
-# Configuración inicial de la app para ocultar elementos predeterminados de Streamlit
-st.set_page_config(
-    page_title="Hydromet",
-    page_icon="💧",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-hide_streamlit_style = """
-    <style>
-        #MainMenu, header, footer {
-            visibility: hidden;
-        }
-    </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
 # ----------------- Autenticación -----------------
 USUARIOS = {
     "admin": "admin123",
@@ -93,8 +76,9 @@ def generar_word(df_to_export):
 
 # ----------------- Panel de Administración -----------------
 def admin_panel():
+    usuario = st.session_state.usuario
     st.title("🛠️ Hydromet - Panel de Administración")
-    st.write(f"Bienvenido, {st.session_state.usuario}")
+    st.write(f"Bienvenido, {usuario} ({'Administrador' if usuario == 'admin' else 'Técnico'})")
 
     st.subheader("📁 Cargar Datos (CSV)")
     uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
@@ -123,50 +107,47 @@ def admin_panel():
                         st.info(f"Columna '{date_column}' detectada y establecida como índice de tiempo.")
                     except Exception as e:
                         st.error(f"Error al convertir la columna '{date_column}' a formato de fecha/hora: {e}")
-            
+
             st.subheader("Vista Previa de los Datos")
             st.dataframe(df)
-
             st.session_state.df_cargado = df
 
         except Exception as e:
             st.error(f"Error al leer el archivo CSV: {e}")
             st.info("Asegúrate de que el archivo es un CSV válido y no está dañado.")
             st.session_state.df_cargado = None
-    
+
     df_actual = st.session_state.df_cargado
 
     if df_actual is not None and not df_actual.empty:
         numeric_df = df_actual.select_dtypes(include=['number'])
 
-        if not numeric_df.empty:
-            st.subheader("📈 Visualización de Datos (Series de Tiempo si hay índice de fecha)")
-            st.line_chart(df_actual)
+        st.subheader("📈 Visualización de Datos")
+        st.line_chart(df_actual)
 
+        if usuario == "admin":
             st.subheader("📊 Gráfico de Correlación")
             try:
                 fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
                 st.plotly_chart(fig)
             except Exception as e:
-                st.warning(f"No se pudo generar el gráfico de correlación. Asegúrate de tener al menos dos columnas numéricas. Error: {e}")
+                st.warning(f"No se pudo generar el gráfico de correlación: {e}")
 
             st.subheader("Exploración de Gráficos (Dinámico)")
             columnas_numericas = df_actual.select_dtypes(include=['number']).columns.tolist()
-            
+
             if len(columnas_numericas) >= 2:
                 col1, col2 = st.columns(2)
                 with col1:
-                    x_axis = st.selectbox("Selecciona eje X (Scatter Plot):", options=columnas_numericas, key="scatter_x")
+                    x_axis = st.selectbox("Selecciona eje X:", options=columnas_numericas, key="scatter_x")
                 with col2:
-                    y_axis = st.selectbox("Selecciona eje Y (Scatter Plot):", options=columnas_numericas, key="scatter_y")
+                    y_axis = st.selectbox("Selecciona eje Y:", options=columnas_numericas, key="scatter_y")
                 if x_axis and y_axis:
                     try:
                         fig_scatter = px.scatter(df_actual, x=x_axis, y=y_axis, title=f"Dispersión de {x_axis} vs {y_axis}")
                         st.plotly_chart(fig_scatter)
                     except Exception as e:
                         st.warning(f"No se pudo generar el gráfico de dispersión: {e}")
-            else:
-                st.info("Necesitas al menos dos columnas numéricas para el gráfico de dispersión.")
 
             if columnas_numericas:
                 hist_column = st.selectbox("Selecciona columna para Histograma:", options=columnas_numericas, key="hist_col")
@@ -176,29 +157,24 @@ def admin_panel():
                         st.plotly_chart(fig_hist)
                     except Exception as e:
                         st.warning(f"No se pudo generar el histograma: {e}")
-            else:
-                st.info("No hay columnas numéricas para generar histogramas.")
 
-        else:
-            st.warning("El DataFrame cargado no contiene columnas numéricas para generar gráficos.")
+            st.subheader("📤 Exportar Datos")
+            pdf_data = generar_pdf(df_actual)
+            word_data = generar_word(df_actual)
 
-        st.subheader("📤 Exportar Datos")
-        pdf_data = generar_pdf(df_actual)
-        word_data = generar_word(df_actual)
+            st.download_button(
+                label="📄 Descargar PDF",
+                data=pdf_data,
+                file_name="reporte.pdf",
+                mime="application/pdf"
+            )
 
-        st.download_button(
-            label="📄 Descargar PDF",
-            data=pdf_data,
-            file_name="reporte.pdf",
-            mime="application/pdf"
-        )
-
-        st.download_button(
-            label="📝 Descargar Word",
-            data=word_data,
-            file_name="reporte.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+            st.download_button(
+                label="📝 Descargar Word",
+                data=word_data,
+                file_name="reporte.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
 
     if st.button("Cerrar sesión"):
         logout()
@@ -218,3 +194,4 @@ def main():
         login()
 
 main()
+    
