@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import matplotlib.pyplot as plt
+import base64
 from io import BytesIO
 from fpdf import FPDF
 from docx import Document
@@ -62,7 +63,7 @@ def generar_word(df_to_export):
     hdr_cells = table.rows[0].cells
     for i, col in enumerate(df_to_export.columns):
         hdr_cells[i].text = col
-    for _, row in df_to_export.iterrows():
+    for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
         for i, col_name in enumerate(df_to_export.columns):
             row_cells[i].text = str(row[col_name])
@@ -70,55 +71,95 @@ def generar_word(df_to_export):
     doc.save(buffer)
     return buffer.getvalue()
 
-# ----------------- Panel Principal -----------------
+# ----------------- Panel de Administración -----------------
 def admin_panel():
-    st.title("Hydromet - Panel")
+    st.title("🛠️ Hydromet - Panel de Administración")
     st.write(f"Bienvenido, {st.session_state.usuario}")
 
     st.subheader("📁 Cargar Datos (CSV)")
-    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+    uploaded_file = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
 
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
+            st.success("Archivo CSV cargado exitosamente.")
+
             if 'fecha' in df.columns:
-                df['fecha'] = pd.to_datetime(df['fecha'])
+                df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
                 df.set_index('fecha', inplace=True)
-                st.info("Columna 'fecha' establecida como índice.")
+                st.info("Columna 'fecha' detectada y establecida como índice de tiempo.")
+
             st.session_state.df_cargado = df
-            st.success("Archivo CSV cargado.")
+            st.dataframe(df)
         except Exception as e:
-            st.error(f"Error al cargar archivo: {e}")
+            st.error(f"Error al leer el archivo CSV: {e}")
 
-    df_actual = st.session_state.get('df_cargado')
+    df_actual = st.session_state.get('df_cargado', None)
+
     if df_actual is not None:
-        st.subheader("Vista previa")
-        st.dataframe(df_actual)
+        numeric_df = df_actual.select_dtypes(include=['number'])
 
-        st.subheader("🔢 Gráfico de Línea")
+        st.subheader("📈 Gráfico de Líneas (Serie de Tiempo)")
         st.line_chart(df_actual)
 
-        columnas_numericas = df_actual.select_dtypes(include=['number']).columns.tolist()
-        if columnas_numericas:
-            hist_col = st.selectbox("Selecciona columna para histograma", columnas_numericas)
-            st.plotly_chart(px.histogram(df_actual, x=hist_col, marginal="rug"))
-
-        if st.session_state.usuario == "admin":
-            st.subheader("Matriz de Correlación")
-            try:
-                fig = px.imshow(df_actual.corr(), text_auto=True)
+        st.subheader("📊 Matriz de Correlación")
+        try:
+            numeric_df_clean = df_actual.select_dtypes(include=['number']).dropna(axis=1, how='any')
+            if numeric_df_clean.shape[1] >= 2:
+                corr_matrix = numeric_df_clean.corr()
+                fig = px.imshow(corr_matrix, text_auto=True, title="Matriz de Correlación")
                 st.plotly_chart(fig)
-            except Exception as e:
-                st.warning(f"No se pudo generar la matriz de correlación: {e}")
+            else:
+                st.warning("Se necesitan al menos dos columnas numéricas sin valores faltantes para la matriz de correlación.")
+        except Exception as e:
+            st.warning(f"No se pudo generar la matriz de correlación: {e}")
 
-            if len(columnas_numericas) >= 2:
-                x = st.selectbox("Eje X", columnas_numericas, key="x")
-                y = st.selectbox("Eje Y", columnas_numericas, key="y")
-                st.plotly_chart(px.scatter(df_actual, x=x, y=y))
+        st.subheader("Gráfico de Caja (Boxplot)")
+        columnas = numeric_df.columns.tolist()
+        if columnas:
+            col_selec = st.selectbox("Selecciona una columna para boxplot", columnas)
+            fig_box = px.box(numeric_df, y=col_selec)
+            st.plotly_chart(fig_box)
 
-        st.subheader("Exportar")
-        st.download_button("📄 PDF", data=generar_pdf(df_actual), file_name="reporte.pdf", mime="application/pdf")
-        st.download_button("📝 Word", data=generar_word(df_actual), file_name="reporte.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        st.subheader("Gráfico de Barras Agrupado")
+        if len(columnas) >= 2:
+            x = st.selectbox("Columna X", columnas, key="bar_x")
+            y = st.selectbox("Columna Y", columnas, key="bar_y")
+            fig_bar = px.bar(df_actual, x=x, y=y, color=x)
+            st.plotly_chart(fig_bar)
+
+        st.subheader("📄 Exportar Reportes")
+        pdf_data = generar_pdf(df_actual)
+        word_data = generar_word(df_actual)
+
+        st.download_button("Descargar PDF", data=pdf_data, file_name="reporte.pdf", mime="application/pdf")
+        st.download_button("Descargar Word", data=word_data, file_name="reporte.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    if st.button("Cerrar sesión"):
+        logout()
+
+# ----------------- Panel del Técnico -----------------
+def tecnico_panel():
+    st.title("Hydromet - Panel del Técnico")
+    st.write(f"Bienvenido, {st.session_state.usuario}")
+
+    uploaded_file = st.file_uploader("Sube archivo CSV", type=["csv"])
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file)
+            if 'fecha' in df.columns:
+                df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+                df.set_index('fecha', inplace=True)
+            st.session_state.df_cargado = df
+            st.dataframe(df)
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+    df_actual = st.session_state.get('df_cargado', None)
+    if df_actual is not None:
+        st.line_chart(df_actual)
+        st.download_button("Descargar PDF", data=generar_pdf(df_actual), file_name="reporte.pdf", mime="application/pdf")
+        st.download_button("Descargar Word", data=generar_word(df_actual), file_name="reporte.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     if st.button("Cerrar sesión"):
         logout()
@@ -127,15 +168,17 @@ def admin_panel():
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-if 'df_cargado' not in st.session_state:
     st.session_state.df_cargado = None
 
 # ----------------- Main -----------------
 def main():
     if st.session_state.autenticado:
-        admin_panel()
+        if st.session_state.usuario == "admin":
+            admin_panel()
+        else:
+            tecnico_panel()
     else:
         login()
 
 main()
-            
+    
