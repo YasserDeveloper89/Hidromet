@@ -23,7 +23,7 @@ USUARIOS = {
 # ----------------- LOGIN -----------------
 def login():
     with st.container():
-        st.markdown("### 💧 Hydromet Pro - Centro de Datos Ambientales")
+        st.markdown("### 💧 Hydromet App - Centro de Datos Ambientales")
         with st.form("login_form"):
             usuario = st.text_input("👤 Usuario")
             contraseña = st.text_input("🔒 Contraseña", type="password")
