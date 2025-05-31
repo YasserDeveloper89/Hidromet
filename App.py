@@ -42,15 +42,14 @@ def generar_pdf(df_to_export):
     pdf.ln()
 
     col_width = pdf.w / (len(df_to_export.columns) + 1)
+
+    # Escribir encabezados (sin índice)
     for col in df_to_export.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
-    for index, row in df_to_export.iterrows():
-        if isinstance(index, pd.Timestamp):
-            pdf.cell(col_width, 10, str(index.strftime('%Y-%m-%d')), border=1)
-        else:
-            pdf.cell(col_width, 10, str(index), border=1)
+    # Escribir filas (sin índice)
+    for row in df_to_export.itertuples(index=False):
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
