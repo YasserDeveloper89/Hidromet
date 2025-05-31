@@ -55,10 +55,8 @@ def generar_pdf(df_to_export):
             pdf.cell(col_width, 10, str(item), border=1)
         pdf.ln()
 
-    buffer = BytesIO()
-    pdf.output(buffer)  # CORREGIDO: se escribe directamente al buffer
-    buffer.seek(0)
-    return buffer.read()
+    pdf_output = pdf.output(dest='S').encode('latin-1')
+    return pdf_output
 
 # ----------------- Generar Word -----------------
 def generar_word(df_to_export):
