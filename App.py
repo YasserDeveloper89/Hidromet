@@ -43,12 +43,10 @@ def generar_pdf(df_to_export):
 
     col_width = pdf.w / (len(df_to_export.columns) + 1)
 
-    # Escribir encabezados (sin índice)
     for col in df_to_export.columns:
         pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
 
-    # Escribir filas (sin índice)
     for row in df_to_export.itertuples(index=False):
         for item in row:
             pdf.cell(col_width, 10, str(item), border=1)
@@ -130,7 +128,7 @@ def admin_panel():
                 fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
                 st.plotly_chart(fig)
             except Exception as e:
-                st.warning(f"No se pudo generar el gráfico de correlación. Asegúrate de tener al menos dos columnas numéricas. Error: {e}")
+                st.warning(f"No se pudo generar el gráfico de correlación: {e}")
 
             st.subheader("Exploración de Gráficos (Dinámico)")
             columnas_numericas = df_actual.select_dtypes(include=['number']).columns.tolist()
@@ -185,6 +183,53 @@ def admin_panel():
     if st.button("Cerrar sesión"):
         logout()
 
+# ----------------- Panel Técnico -----------------
+def tecnico_panel():
+    st.title("💧 Hydromet - Panel Técnico")
+    st.write(f"Bienvenido, {st.session_state.usuario}")
+
+    df_actual = st.session_state.df_cargado
+
+    if df_actual is not None and not df_actual.empty:
+        st.subheader("Vista Previa de los Datos")
+        st.dataframe(df_actual)
+
+        st.subheader("📈 Visualización de Datos (Series de Tiempo si hay índice de fecha)")
+        st.line_chart(df_actual)
+
+        numeric_df = df_actual.select_dtypes(include=['number'])
+
+        if not numeric_df.empty:
+            st.subheader("📊 Gráfico de Correlación")
+            try:
+                fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
+                st.plotly_chart(fig)
+            except Exception as e:
+                st.warning(f"No se pudo generar el gráfico de correlación: {e}")
+
+        st.subheader("📤 Exportar Datos")
+        pdf_data = generar_pdf(df_actual)
+        word_data = generar_word(df_actual)
+
+        st.download_button(
+            label="📄 Descargar PDF",
+            data=pdf_data,
+            file_name="reporte.pdf",
+            mime="application/pdf"
+        )
+
+        st.download_button(
+            label="📝 Descargar Word",
+            data=word_data,
+            file_name="reporte.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    else:
+        st.info("No hay datos disponibles. El administrador debe cargar el archivo.")
+
+    if st.button("Cerrar sesión"):
+        logout()
+
 # ----------------- Inicialización -----------------
 if 'autenticado' not in st.session_state:
     st.session_state.autenticado = False
@@ -195,9 +240,11 @@ if 'df_cargado' not in st.session_state:
 # ----------------- Main -----------------
 def main():
     if st.session_state.autenticado:
-        admin_panel()
+        if st.session_state.usuario == "admin":
+            admin_panel()
+        elif st.session_state.usuario == "tecnico":
+            tecnico_panel()
     else:
         login()
 
 main()
-        
