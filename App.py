@@ -56,21 +56,21 @@ def generar_pdf(df_to_export):
         pdf.ln()
 
     buffer = BytesIO()
-    pdf.output(buffer, 'S')
-    pdf_data = buffer.getvalue()
-    return pdf_data
+    pdf.output(buffer)  # CORREGIDO: se escribe directamente al buffer
+    buffer.seek(0)
+    return buffer.read()
 
 # ----------------- Generar Word -----------------
-def generar_word(df_to_export): # Aquí se recibe df_to_export
+def generar_word(df_to_export):
     doc = Document()
     doc.add_heading("Reporte de Datos", 0)
     table = doc.add_table(rows=1, cols=len(df_to_export.columns))
     hdr_cells = table.rows[0].cells
-    for i, col in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns
+    for i, col in enumerate(df_to_export.columns):
         hdr_cells[i].text = col
     for index, row in df_to_export.iterrows():
         row_cells = table.add_row().cells
-        for i, col_name in enumerate(df_to_export.columns): # ¡CORREGIDO! Usar df_to_export.columns y col_name
+        for i, col_name in enumerate(df_to_export.columns):
             row_cells[i].text = str(row[col_name])
     buffer = BytesIO()
     doc.save(buffer)
@@ -203,5 +203,3 @@ def main():
         login()
 
 main()
-
-                
