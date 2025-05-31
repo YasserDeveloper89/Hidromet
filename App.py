@@ -7,31 +7,37 @@ from io import BytesIO
 from fpdf import FPDF
 from docx import Document
 
-st.set_page_config(page_title="Hydromet 💧", layout="wide")
+st.set_page_config(page_title="💧 Hydromet", layout="wide")
 
-# Autenticación simulada
+# --- Cuentas ---
 USUARIOS = {
     "admin": {"password": "admin123", "rol": "administrador"},
     "tecnico": {"password": "tecnico123", "rol": "tecnico"}
 }
 
+# --- Login ---
 def login():
-    st.title("Hydromet 💧 - Inicio de sesión")
+    st.title("💧 Hydromet")
     usuario = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
     if st.button("Iniciar sesión"):
         if usuario in USUARIOS and USUARIOS[usuario]["password"] == password:
-            st.session_state.autenticado = True
-            st.session_state.usuario = usuario
-            st.session_state.rol = USUARIOS[usuario]["rol"]
-            st.experimental_rerun()
+            st.session_state["autenticado"] = True
+            st.session_state["usuario"] = usuario
+            st.session_state["rol"] = USUARIOS[usuario]["rol"]
+            st.experimental_set_query_params(refresh="true")
         else:
             st.error("Credenciales incorrectas")
 
-def logout():
-    st.session_state.clear()
-    st.stop()
+# --- Logout ---
+def mostrar_logout():
+    if st.sidebar.button("💧 Cerrar sesión"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.experimental_set_query_params()
+        st.experimental_rerun()
 
+# --- Carga CSV ---
 def cargar_datos():
     archivo = st.file_uploader("Sube tu archivo CSV para visualizar los datos", type=["csv"])
     if archivo is not None:
@@ -42,10 +48,12 @@ def cargar_datos():
         except Exception as e:
             st.error(f"Error al cargar el archivo: {e}")
 
+# --- Visualización básica ---
 def visualizar_datos(df):
     st.subheader("Vista previa de los datos")
     st.dataframe(df)
 
+# --- Matriz de Correlación ---
 def matriz_correlacion(df):
     st.subheader("Matriz de correlación")
     try:
@@ -59,6 +67,7 @@ def matriz_correlacion(df):
     except Exception as e:
         st.error(f"No se pudo generar la matriz de correlación: {e}")
 
+# --- PDF ---
 def generar_pdf(df):
     st.subheader("Exportar datos a PDF")
     if st.button("Generar PDF"):
@@ -70,7 +79,7 @@ def generar_pdf(df):
         for col in df.columns:
             pdf.cell(col_width, row_height, str(col), border=1)
         pdf.ln(row_height)
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             for item in row:
                 pdf.cell(col_width, row_height, str(item), border=1)
             pdf.ln(row_height)
@@ -80,6 +89,7 @@ def generar_pdf(df):
         href = f'<a href="data:application/pdf;base64,{b64}" download="datos.pdf">Descargar PDF</a>'
         st.markdown(href, unsafe_allow_html=True)
 
+# --- Word ---
 def generar_word(df):
     st.subheader("Exportar datos a Word")
     if st.button("Generar Word"):
@@ -88,7 +98,7 @@ def generar_word(df):
         hdr_cells = table.rows[0].cells
         for i, col in enumerate(df.columns):
             hdr_cells[i].text = str(col)
-        for index, row in df.iterrows():
+        for _, row in df.iterrows():
             row_cells = table.add_row().cells
             for i, item in enumerate(row):
                 row_cells[i].text = str(item)
@@ -98,6 +108,7 @@ def generar_word(df):
         href = f'<a href="data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,{b64}" download="datos.docx">Descargar Word</a>'
         st.markdown(href, unsafe_allow_html=True)
 
+# --- Gráficos adicionales (Admin) ---
 def graficos_adicionales(df):
     st.subheader("Gráfico de barras")
     column_bar = st.selectbox("Selecciona una columna categórica", df.columns)
@@ -118,14 +129,11 @@ def graficos_adicionales(df):
         fig_line = px.line(df, x=x_col, y=y_col, title=f"Gráfico de {y_col} vs {x_col}")
         st.plotly_chart(fig_line, use_container_width=True)
 
+# --- Paneles por rol ---
 def admin_panel():
-    st.title("Panel de Administración 💧")
-    st.sidebar.success(f"Conectado como: {st.session_state.usuario}")
-    if st.sidebar.button("💧 Cerrar sesión"):
-        logout()
-
+    st.title("💧 Hydromet - Panel de Administración")
+    mostrar_logout()
     cargar_datos()
-
     if "df_actual" in st.session_state:
         df = st.session_state["df_actual"]
         visualizar_datos(df)
@@ -135,24 +143,18 @@ def admin_panel():
         generar_word(df)
 
 def tecnico_panel():
-    st.title("Panel Técnico 💧")
-    st.sidebar.success(f"Conectado como: {st.session_state.usuario}")
-    if st.sidebar.button("💧 Cerrar sesión"):
-        logout()
-
+    st.title("💧 Hydromet - Panel Técnico")
+    mostrar_logout()
     cargar_datos()
-
     if "df_actual" in st.session_state:
         df = st.session_state["df_actual"]
         visualizar_datos(df)
         generar_pdf(df)
         generar_word(df)
 
+# --- App Principal ---
 def main():
-    if "autenticado" not in st.session_state:
-        st.session_state.autenticado = False
-
-    if not st.session_state.autenticado:
+    if "autenticado" not in st.session_state or not st.session_state["autenticado"]:
         login()
     else:
         rol = st.session_state.get("rol", "")
