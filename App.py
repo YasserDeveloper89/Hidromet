@@ -22,7 +22,7 @@ def login():
         if usuario in USUARIOS and USUARIOS[usuario] == contraseña:
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
-            st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
+            st.success(f"✅ Acceso autorizado. Bienvenido, {usuario}")
             st.rerun()
         else:
             st.error("❌ Usuario o contraseña incorrectos")
@@ -39,7 +39,7 @@ def generar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Reporte de Datos", ln=True, align="C")
+    pdf.cell(200, 10, txt="Reporte de datos", ln=True, align="C")
     pdf.ln()
     col_width = pdf.w / (len(df.columns) + 1)
     for col in df.columns:
@@ -54,7 +54,7 @@ def generar_pdf(df):
 # ----------------- Exportar a Word -----------------
 def generar_word(df):
     doc = Document()
-    doc.add_heading("Reporte de Datos", 0)
+    doc.add_heading("Reporte de datos", 0)
     table = doc.add_table(rows=1, cols=len(df.columns))
     hdr_cells = table.rows[0].cells
     for i, col in enumerate(df.columns):
@@ -97,7 +97,7 @@ def modelo_prediccion(df):
 
 # ----------------- Análisis estadístico -----------------
 def analisis_estadistico(df):
-    st.subheader("📊 Análisis Estadístico")
+    st.subheader("📊 Análisis estadístico")
     st.write("Resumen estadístico:")
     st.dataframe(df.describe())
 
@@ -115,7 +115,7 @@ def generar_pdf_analitico(df):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Reporte Analítico", ln=True, align="C")
+    pdf.cell(200, 10, txt="Reporte analítico", ln=True, align="C")
     pdf.ln()
     resumen = df.describe().round(2)
     for col in resumen.columns:
@@ -142,7 +142,7 @@ def cargar_datos():
 
 # ----------------- Panel del Administrador -----------------
 def admin_panel():
-    st.title("🛠️ Panel de Administración")
+    st.title("🛠️ Panel de administración")
     st.write(f"Bienvenido, {st.session_state.usuario}")
     cargar_datos()
 
@@ -176,12 +176,12 @@ def admin_panel():
         modelo_prediccion(df)
         analisis_estadistico(df)
 
-        st.subheader("📄 Exportar Datos")
+        st.subheader("📄 Exportar datos")
         st.download_button("📄 Descargar PDF", data=generar_pdf(df), file_name="reporte.pdf", mime="application/pdf")
         st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-        st.subheader("🧠Exportar Reporte Inteligente")
+        st.subheader("🧠Exportar reporte inteligente")
         st.download_button("📁 Descargar Reporte Avanzado (PDF)",
                            data=generar_pdf_analitico(df),
                            file_name="reporte_analitico.pdf",
@@ -192,16 +192,16 @@ def admin_panel():
 
 # ----------------- Panel del Técnico -----------------
 def tecnico_panel():
-    st.title("🔧 Panel Técnico")
+    st.title("🔧 Panel técnico")
     st.write(f"Bienvenido, {st.session_state.usuario}")
     cargar_datos()
 
     df = st.session_state.get('df_cargado')
     if df is not None:
-        st.subheader("📄 Vista Previa de los Datos")
+        st.subheader("📄 Vista previa de los datos")
         st.dataframe(df)
 
-        st.subheader("📈 Serie de Tiempo")
+        st.subheader("📈 Serie de tiempo")
         st.line_chart(df)
 
         numeric_df = df.select_dtypes(include='number')
