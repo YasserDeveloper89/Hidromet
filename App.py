@@ -15,7 +15,7 @@ USUARIOS = {
 
 # ----------------- Login -----------------
 def login():
-    st.title("💧 Hydromet | Centro de control ambiental")
+    st.title("💧Hydromet | Centro de control ambiental")
     usuario = st.text_input("Usuario")
     contraseña = st.text_input("Contraseña", type="password")
     if st.button("Iniciar sesión"):
