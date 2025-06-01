@@ -69,7 +69,7 @@ def generar_word(df):
 
 # ----------------- Predicción ML -----------------
 def modelo_prediccion(df):
-    st.subheader("🤖 Predicción Automática")
+    st.subheader("🤖 Predicción automática")
     numeric_df = df.select_dtypes(include='number')
     if numeric_df.shape[1] < 2:
         st.warning("Se necesitan al menos dos columnas numéricas para predecir.")
@@ -148,10 +148,10 @@ def admin_panel():
 
     df = st.session_state.get('df_cargado')
     if df is not None:
-        st.subheader("📄 Vista Previa de los Datos")
+        st.subheader("📄 Vista previa de los datos")
         st.dataframe(df)
 
-        st.subheader("📈 Serie de Tiempo")
+        st.subheader("📈 Serie de tiempo")
         st.line_chart(df)
 
         numeric_df = df.select_dtypes(include='number')
@@ -182,7 +182,7 @@ def admin_panel():
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
         st.subheader("🧠Exportar reporte inteligente")
-        st.download_button("📁 Descargar Reporte Avanzado (PDF)",
+        st.download_button("📁 Descargar reporte avanzado (PDF)",
                            data=generar_pdf_analitico(df),
                            file_name="reporte_analitico.pdf",
                            mime="application/pdf")
