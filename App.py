@@ -181,7 +181,7 @@ def admin_panel():
         st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-        st.subheader("📅 Exportar Reporte Inteligente")
+        st.subheader("🧠Exportar Reporte Inteligente")
         st.download_button("📁 Descargar Reporte Avanzado (PDF)",
                            data=generar_pdf_analitico(df),
                            file_name="reporte_analitico.pdf",
