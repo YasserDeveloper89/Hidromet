@@ -6,20 +6,21 @@ from io import BytesIO
 from docx import Document
 from sklearn.linear_model import LinearRegression
 import numpy as np
+import bcrypt
 
-# ----------------- Autenticación -----------------
+# ----------------- Autenticación con bcrypt -----------------
 USUARIOS = {
-    "admin": "YZ1BKzgHIK7P7ZrB",
-    "tecnico": "tecnico123"
+    "admin": b"$2b$12$xAlvAFPI3CJ8SxYX0SkxjOnAUbFSNQ5UmINuQayVhREbH8rPSPPiK",  # admin123
+    "tecnico": b"$2b$12$RJHew7XYvG5bY7UQ26cL4eDQcVzSrrFtCnlkON3UgmgPzqsWDTRMi"  # tecnico123
 }
 
 # ----------------- Login -----------------
 def login():
     st.title("💧 Hydromet - Centro de control de datos ambientales")
     usuario = st.text_input("Usuario")
-    contraseña = st.text_input("Contraseña", type="password")
+    contrasena = st.text_input("Contraseña", type="password")
     if st.button("Iniciar sesión"):
-        if usuario in USUARIOS and USUARIOS[usuario] == contraseña:
+        if usuario in USUARIOS and bcrypt.checkpw(contrasena.encode(), USUARIOS[usuario]):
             st.session_state.autenticado = True
             st.session_state.usuario = usuario
             st.success(f"✅ Login exitoso. Bienvenido, {usuario}")
@@ -239,4 +240,4 @@ def main():
         login()
 
 main()
-    
+            
