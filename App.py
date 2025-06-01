@@ -4,6 +4,8 @@ import plotly.express as px
 from fpdf import FPDF
 from io import BytesIO
 from docx import Document
+from sklearn.linear_model import LinearRegression
+import numpy as np
 
 # ----------------- Autenticación -----------------
 USUARIOS = {
@@ -29,7 +31,7 @@ def login():
 def logout():
     st.session_state.autenticado = False
     st.session_state.usuario = ""
-    st.session_state.df_cargado = None  # Limpiar datos al cerrar sesión
+    st.session_state.df_cargado = None
     st.rerun()
 
 # ----------------- Exportar a PDF -----------------
@@ -64,6 +66,64 @@ def generar_word(df):
     buffer = BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+# ----------------- Predicción ML -----------------
+def modelo_prediccion(df):
+    st.subheader("🤖 Predicción Automática")
+    numeric_df = df.select_dtypes(include='number')
+    if numeric_df.shape[1] < 2:
+        st.warning("Se necesitan al menos dos columnas numéricas para predecir.")
+        return
+
+    cols = numeric_df.columns.tolist()
+    x_col = st.selectbox("Variable independiente (X)", cols, key="pred_x")
+    y_col = st.selectbox("Variable dependiente (Y)", [c for c in cols if c != x_col], key="pred_y")
+
+    X = df[[x_col]].dropna()
+    y = df[y_col].loc[X.index]
+
+    modelo = LinearRegression()
+    modelo.fit(X, y)
+    prediccion = modelo.predict(X)
+
+    fig = px.scatter(df, x=x_col, y=y_col, title="Predicción vs Realidad")
+    fig.add_scatter(x=X[x_col], y=prediccion, mode='lines', name='Predicción')
+    st.plotly_chart(fig)
+
+    nuevo_valor = st.number_input(f"Ingresar nuevo valor para {x_col}")
+    if st.button("Predecir"):
+        resultado = modelo.predict([[nuevo_valor]])[0]
+        st.success(f"✅ Predicción: {resultado:.2f}")
+
+# ----------------- Análisis estadístico -----------------
+def analisis_estadistico(df):
+    st.subheader("📊 Análisis Estadístico")
+    st.write("Resumen estadístico:")
+    st.dataframe(df.describe())
+
+    st.write("🔍 Outliers detectados:")
+    for col in df.select_dtypes(include='number').columns:
+        q1 = df[col].quantile(0.25)
+        q3 = df[col].quantile(0.75)
+        iqr = q3 - q1
+        outliers = df[(df[col] < q1 - 1.5 * iqr) | (df[col] > q3 + 1.5 * iqr)]
+        if not outliers.empty:
+            st.warning(f"Columna '{col}' tiene {len(outliers)} outliers.")
+
+# ----------------- PDF analítico -----------------
+def generar_pdf_analitico(df):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Reporte Analítico", ln=True, align="C")
+    pdf.ln()
+    resumen = df.describe().round(2)
+    for col in resumen.columns:
+        pdf.cell(200, 10, txt=f"{col}:", ln=True)
+        for idx in resumen.index:
+            pdf.cell(200, 10, txt=f"{idx}: {resumen[col]}", ln=True)
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin-1')
 
 # ----------------- Cargar CSV -----------------
 def cargar_datos():
@@ -113,10 +173,19 @@ def admin_panel():
             fig_hist = px.histogram(df, x=col_hist, marginal="rug", title=f"Histograma de {col_hist}")
             st.plotly_chart(fig_hist)
 
-        st.subheader("📤 Exportar Datos")
+        modelo_prediccion(df)
+        analisis_estadistico(df)
+
+        st.subheader("📄 Exportar Datos")
         st.download_button("📄 Descargar PDF", data=generar_pdf(df), file_name="reporte.pdf", mime="application/pdf")
         st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+        st.subheader("📅 Exportar Reporte Inteligente")
+        st.download_button("📁 Descargar Reporte Avanzado (PDF)",
+                           data=generar_pdf_analitico(df),
+                           file_name="reporte_analitico.pdf",
+                           mime="application/pdf")
 
     if st.button("Cerrar sesión"):
         logout()
@@ -141,7 +210,7 @@ def tecnico_panel():
             fig = px.imshow(numeric_df.corr(), text_auto=True, title="Matriz de Correlación")
             st.plotly_chart(fig)
 
-        st.subheader("📤 Exportar Datos")
+        st.subheader("📄 Exportar Datos")
         st.download_button("📄 Descargar PDF", data=generar_pdf(df), file_name="reporte.pdf", mime="application/pdf")
         st.download_button("📝 Descargar Word", data=generar_word(df), file_name="reporte.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
